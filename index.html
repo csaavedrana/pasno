@@ -1446,15 +1446,17 @@ function vIA(){
   ${!V('iat')&&!r.acciones?`<div class="chips" style="margin-top:10px">${IA_EJEMPLOS.map(e=>`<div class="seg"><button data-a="iaEj" data-v="${esc(e)}">${esc(e)}</button></div>`).join('')}</div>`:''}
   ${r.error?`<div class="warnbox" style="margin-top:12px">${esc(r.error)}</div>`:''}
   ${(r.preguntas||[]).length?`<div class="warnbox" style="margin-top:12px">${r.preguntas.map(esc).join('<br>')}<br><span class="s">Corrige el texto y vuelve a interpretar, o ajústalo en el formulario.</span></div>`:''}
-  ${(r.acciones||[]).length?`<h3>Te propongo anotar</h3><div class="list">${r.acciones.map((a,i)=>`<div class="row"><div class="main"><div class="t" style="white-space:normal">${esc(a.resumen)}</div><div class="s">${{venta:'Venta',pago:'Pago',gasto:'Gasto',movimiento:'Movimiento'}[a.tipo]}${a._aviso?' · <span class="chip w">'+esc(a._aviso)+'</span>':''}</div></div>${a._hecho?'<span class="chip ok">✓ anotado</span>':iaFalta(a)?'<span class="s">Elige abajo ↓</span>':`<button class="btn sm" data-a="iaAbrir" data-i="${i}">Revisar</button>`}</div>${iaOpciones(a,i)}`).join('')}</div>
+  ${(r.acciones||[]).length?`<h3>Te propongo anotar</h3><div class="list">${r.acciones.map((a,i)=>`<div class="row"><div class="main"><div class="t" style="white-space:normal">${esc(a.resumen)}</div><div class="s">${{venta:'Venta',pago:'Pago',gasto:'Gasto',movimiento:'Movimiento'}[a.tipo]}${a._aviso&&!a._hecho?' · <span class="chip w">'+esc(a._aviso)+'</span>':''}</div></div>${a._hecho?'<span class="chip ok">✓ anotado</span>':iaFalta(a)?'<span class="s">Elige abajo ↓</span>':`<button class="btn sm" data-a="iaAbrir" data-i="${i}">Revisar</button>`}</div>${iaOpciones(a,i)}`).join('')}</div>
     <p class="note">Cada una abre el formulario de siempre con los datos listos. Revisa y toca Guardar.</p>`:''}`;
 }
 SCREENS.f_ia=vIA;
+const _pagoPick=A.pagoPick;
+A.pagoPick=d=>{ const keep=ui.iaCur!=null?{pm:FORM.pm,pf:FORM.pf}:null; _pagoPick(d); if(keep){ for(const k in keep) if(keep[k]!=null) FORM[k]=keep[k]; render(); } };
 // "¿cuál cliente?": la IA manda las opciones y se elige con un toque (y lo aprende)
 const iaFalta=a=>(a.cliente_opciones||[]).length&&!a.cliente_id&&!a._otra;
 function iaOpciones(a,i){ const op=a.cliente_opciones||[]; if(a._hecho||!op.length||a._otra) return '';
   return `<div class="chips" style="padding:0 0 10px">${op.map(id=>{ const k=S.clientes.find(x=>x.id===id); return `<div class="seg"><button data-a="iaCli" data-i="${i}" data-v="${id}" ${pressed(a.cliente_id===id)}>${esc(k.nombre)}</button></div>`; }).join('')}<div class="seg"><button data-a="iaOtra" data-i="${i}">Otra persona</button></div></div>`; }
-A.iaOtra=d=>{ const a=ui.ia.acciones[+d.i]; a._otra=true; a.cliente_id=null; A.iaAbrir({i:d.i}); };
+A.iaOtra=d=>{ const a=ui.ia.acciones[+d.i]; if(!a||a._hecho) return; a._otra=true; a.cliente_id=null; A.iaAbrir({i:d.i}); };
 A.iaCli=d=>{ const a=ui.ia.acciones[+d.i]; a.cliente_id=d.v; a._elegido=true; if(a._aviso==='¿cuál cliente?'||a._aviso==='elige quién pagó') a._aviso=null; render(); };
 const _vAddSheet2=vAddSheet;
 vAddSheet=function(){ return _vAddSheet2().replace('<button class="addrow" data-a="flow" data-f="f_vender">',
@@ -1494,7 +1496,7 @@ Object.assign(A,{
     }catch(e){ ui.ia={error:'No pude conectarme con la IA. Intenta de nuevo.'}; }
     if(ui.ia.acciones&&!ui.ia.acciones.length&&!(ui.ia.preguntas||[]).length) ui.ia.error='No encontré nada para anotar. Prueba contándolo de otra forma.';
     render(); },
-  iaAbrir(d){ const a=ui.ia.acciones[+d.i]; ui.iaCur=+d.i;
+  iaAbrir(d){ const a=ui.ia.acciones[+d.i]; if(!a||a._hecho) return; ui.iaCur=+d.i;
     if(a.tipo==='venta'){ const pk={}; for(const p of a.productos){ const b=S.bottles.find(x=>x.id===p.ref); if(b.estado==='Abierta'){ const k=b.id+'|'+(p.tamano_ml===10?10:5); pk[k]=(pk[k]||0)+Math.max(1,p.cantidad); } else pk[b.id]=1; }
       startFlow('f_vender',{picks:pk,step:Object.keys(pk).length?(a.cliente_id||a.cliente_nuevo?3:2):1});
       if(a.cliente_id) ui.cliPick=a.cliente_id; else if(a.cliente_nuevo){ ui.newCli=true; FORM.ncn=titleCase(a.cliente_nuevo); }
@@ -1510,8 +1512,8 @@ Object.assign(A,{
 // al guardar una propuesta: aprender de lo que se corrigió, marcarla y volver a la lista si quedan otras
 function iaDone(rec){ if(ui.iaCur==null||!ui.ia||!ui.ia.acciones) return; const a=ui.ia.acciones[ui.iaCur];
   try{ iaLearn(a,rec,ui.ia.texto||''); }catch(e){}
-  a._hecho=true; ui.iaCur=null;
-  if(ui.ia.acciones.some(a=>!a._hecho)){ tab='f_ia'; ui.sheet=null; render(true); } else { ui.ia.done=true; } }
+  a._hecho=true; ui.iaCur=null; if(!ui.ia.acciones.some(a=>!a._hecho)) ui.ia.done=true;
+  tab='f_ia'; if(!rec||rec.tipo!=='ventas') ui.sheet=null; render(true); }
 const IA_SAVES={saveSale:'ventas',paySave:'pagos',saveGasto:'gastos',saveMov:'movs'};
 for(const k in IA_SAVES){ const f=A[k], arr=IA_SAVES[k]; A[k]=function(...args){ const before=S[arr].length; const r=f.apply(this,args); if(S[arr].length>before) iaDone({tipo:arr,nuevos:S[arr].slice(before)}); return r; }; }
 
@@ -1622,7 +1624,7 @@ vAjustes=function(){ const nm=S.iaMem?S.iaMem.alias.length+S.iaMem.notas.length:
 SCREENS.ajustes=vAjustes;
 
 // versión visible al final de Ajustes, para saber si el teléfono ya tiene la última
-const APP_VER='14-10 23:40';
+const APP_VER='14-10 23:48';
 const _vAjustes3=vAjustes;
 vAjustes=function(){ return _vAjustes3()+`<p class="note" style="text-align:center;margin-top:18px">Versión ${APP_VER}</p>`; };
 SCREENS.ajustes=vAjustes;
