@@ -1300,6 +1300,7 @@ async function start(){
     if(!prof){ shell(`<h2>Sin acceso</h2><p class="note">${esc(user.email)} no está autorizado para ver Pasnó. Pídele a Camila que te agregue.</p><button class="btn ghost" id="lo">Salir</button>`); $('#lo').onclick=()=>sb.auth.signOut().then(()=>vLogin()); return; }
     me=prof; if(['Mati','Wanda'].includes(me.nombre)){ ui.vend=me.nombre; ui.pRecibe=me.nombre; }
     const cached=S, d=await loadDoc(); if(!d.data){ S=cached&&cached.v===4&&dirty?cached:null; if(!S){ vImport(); return; } }
+    if(typeof runFixes==='function'&&runFixes()) persist();
     if(dirty) pushDoc();
     subscribe(); render(true);
   }catch(e){
@@ -1687,7 +1688,7 @@ A.iaMemDel=d=>{ const M=iaMem(), x=M[d.k][+d.i]; if(!x) return; commit('Borrado'
 
 
 // versión visible al final de Ajustes, para saber si el teléfono ya tiene la última
-const APP_VER='15-10 00:22';
+const APP_VER='15-10 14:29';
 
 /* ---------- Ajustes: lista agrupada, cada cosa se edita en su propia hoja ---------- */
 const AJ_MSG={antes:['Antes de que venza','Se manda unos días antes del vencimiento.'],hoy:['El día que vence','Se manda el mismo día del vencimiento.'],atrasada:['Cuota atrasada','Para cuando ya pasó la fecha.']};
@@ -1758,6 +1759,47 @@ A.waSin=d=>{ const k=S.clientes.find(x=>x.id===d.id); if(k){ k.ult=today(); save
 A.waTelSave=()=>{ const s=ui.sheet, k=S.clientes.find(x=>x.id===s.id), tel=normTel(V('wtel')); if(tel.length<11){ toast('Revisa el número: 9 dígitos, empezando con 9'); return; }
   ui.sheet=null; clearForm('wtel'); window.open(waHref({tel},s.text),'_blank');
   commit(`WhatsApp de ${k.nombre} guardado`, ()=>{ k.tel=tel; k.ult=today(); }); };
+
+/* ---------- arreglos de datos que se aplican una sola vez ----------
+   El código es genérico (este archivo es público): los nombres de clientes vienen en un archivo privado
+   que Camila carga desde Ajustes → Respaldo → Aplicar arreglo de datos. Queda marcado en S.cfg.fixes. */
+const FIXES=[
+ {id:'mati-16oct', run(p){
+   const K=id=>S.clientes.find(k=>k.id===id), V=id=>S.ventas.find(v=>v.id===id), B=id=>S.bottles.find(b=>b.id===id);
+   const nuevoCli=nombre=>{ let k=S.clientes.find(x=>norm(x.nombre)===norm(nombre)); if(!k){ k={id:uid('K'),nombre,tel:'',dia:null,notas:'',ult:null,favor:0}; S.clientes.push(k); } return k; };
+   const sinNombre=S.clientes.find(k=>/^sin nombre/i.test(k.nombre));
+   const asignar=(vid,cli)=>{ const v=V(vid); if(v&&cli&&sinNombre&&v.cliente===sinNombre.id){ v.cliente=cli.id; S.cuotas.filter(c=>c.venta===vid).forEach(c=>{ delete c.conf; }); } };
+   // 1. deuda del Erba Pura (V171): pasa del cliente provisorio al cliente real
+   const v171=V('V171'); if(v171&&p.erbaPura){ const ph=K(v171.cliente); if(ph&&/erba pura/i.test(ph.nombre)){ v171.cliente=nuevoCli(p.erbaPura).id; if(!S.ventas.some(v=>v.cliente===ph.id)) S.clientes=S.clientes.filter(k=>k!==ph); } }
+   // 2. costo del perfume agregado sin costo en V088
+   const v088=V('V088'); if(v088&&p.costoV088) for(const it of v088.items) if(it.t==='x'&&!it.costo&&/costo por confirmar/i.test(it.nombre)){ it.costo=p.costoV088; it.nombre=it.nombre.replace(/\s*\(costo por confirmar\)/i,''); }
+   // 3 y 5. ventas que estaban sin nombre (V168, V175)
+   if(p.poloRed) asignar('V168',nuevoCli(p.poloRed));
+   if(p.kamrahWaha) asignar('V175',K(p.kamrahWaha));
+   // 6. unir dos fichas de la misma persona
+   const va=K(p.unirDe), vp=K(p.unirEn); if(va&&vp&&va!==vp){ S.ventas.forEach(v=>{ if(v.cliente===va.id) v.cliente=vp.id; }); if(!vp.tel&&va.tel) vp.tel=va.tel; if(!vp.dia&&va.dia) vp.dia=va.dia; vp.favor=(vp.favor||0)+(va.favor||0); if(va.notas) vp.notas=[vp.notas,va.notas].filter(Boolean).join(' · ');
+     if(S.iaMem) S.iaMem.alias.forEach(a=>{ if(a.id===va.id) a.id=vp.id; }); S.clientes=S.clientes.filter(k=>k!==va); }
+   // 8. botellas del pedido O1 (árabes, $400.000, se deben $200.000)
+   const o1=S.compras.find(c=>c.id==='O1'); if(o1){ ['B241','B242','B243','B244','B245','B246','B247','B248','B249'].forEach(id=>{ const b=B(id); if(b&&!b.compra){ b.compra='O1'; b.fCompra=b.fCompra||o1.fecha; } }); o1.nota='Perfumes árabes: $400.000, pagados $200.000, el resto en noviembre.'; }
+   // 9. pedido del Proveedor 1 del 14 oct: 5 ya llegaron y falta uno
+   if(p.enCamino&&!S.compras.some(c=>c.id==='O2')){
+     S.compras.push({id:'O2',prov:'P1',fecha:'2026-10-14',total:155000+p.enCamino.costo,estado:'En camino',nota:'Pedido de la llamada del 14 oct. Llegaron 5; falta 1.'});
+     ['B236','B237','B238','B239','B240'].forEach(id=>{ const b=B(id); if(b&&!b.compra){ b.compra='O2'; b.fCompra=b.fCompra||'2026-10-14'; } });
+     const n=Math.max(...S.bottles.map(b=>+String(b.id).slice(1)||0))+1;
+     S.bottles.push({id:'B'+n,name:p.enCamino.nombre,tipo:p.enCamino.tipo||'Nicho',ml:p.enCamino.ml,cost:p.enCamino.costo,price:0,estado:'En camino',venta:'',dec:null,porEntregar:false,compra:'O2',fCompra:'2026-10-14',fSalida:null,nota:'Pagado. Ponle precio cuando llegue.'});
+     updCompra('O2'); }
+ }},
+];
+A.fixFile=()=>{ const inp=document.createElement('input'); inp.type='file'; inp.accept='.json,application/json';
+  inp.onchange=async()=>{ const f=inp.files[0]; if(!f) return; let x; try{ x=JSON.parse(await f.text()); }catch(e){ toast('Ese archivo no es un arreglo de Pasnó'); return; }
+    const fx=FIXES.find(z=>z.id===x.fix); if(!fx){ toast('Ese archivo no es un arreglo de Pasnó'); return; }
+    S.cfg.fixes=S.cfg.fixes||[]; if(S.cfg.fixes.includes(fx.id)){ toast('Ese arreglo ya estaba aplicado'); return; }
+    try{ commit(`Arreglo aplicado: ${fx.id}`, ()=>{ fx.run(x.datos||{}); S.cfg.fixes.push(fx.id); }); }catch(e){ console.error(e); toast('No se pudo aplicar: '+e.message); } };
+  inp.click(); };
+const _vAjustesFix=vAjustes;
+vAjustes=function(){ const h=_vAjustesFix(); if(!(me&&/^csaavedrana@/i.test(me.email||''))) return h;
+  return h.replace('<h3>Ayuda</h3>',`<div class="list" style="margin-top:6px">${ajRow('fixFile','Aplicar arreglo de datos','Solo Camila: archivo que prepara Claude')}</div><h3>Ayuda</h3>`); };
+SCREENS.ajustes=vAjustes;
 
 /* ---------- events ---------- */
 document.addEventListener('click', e=>{
