@@ -479,6 +479,7 @@ function vCompra(){
     <button class="btn ghost" data-a="addLine" ${draft.length?'':'disabled'}>+ Agregar otro perfume a este pedido</button>
   </div>
   <h3>¿Ya llegó?</h3><div class="seg"><button data-a="buyLlego" data-v="1" ${pressed(ui.buyLlego)}>Sí, lo tengo</button><button data-a="buyLlego" data-v="0" ${pressed(!ui.buyLlego)}>Está en camino</button></div>
+  ${ui.buyLlego?`<div class="field" style="margin-top:10px"><span class="flab">¿Pagaste flete al recibirlo?</span>${costChips('bfl','Envío','No')}</div>`:'<p class="note">Cuando llegue, la app te preguntará por el flete.</p>'}
   <h3>¿Le pagaste todo?</h3><div class="seg"><button data-a="buyPago" data-v="todo" ${pressed(ui.buyPago==='todo')}>Sí</button><button data-a="buyPago" data-v="parte" ${pressed(ui.buyPago==='parte')}>Una parte, le debo el resto</button></div>
   ${ui.buyPago==='parte'?`<div class="grid2" style="margin-top:12px"><div class="field"><label for="bpa">Pagué ahora</label><input id="bpa" data-k data-r inputmode="numeric" value="${esc(V('bpa'))}"></div><div class="field"><label for="bpv">El resto vence</label><input id="bpv" data-k type="date" value="${esc(V('bpv',nextMonthDue(null)))}"></div></div>${total?`<p class="note">Le quedarás debiendo ${clp(total-ahora)}.</p>`:''}`:''}
   ${actionbar(`<button class="btn" data-a="saveBuy" ${lines.length&&(prov!=='new'||V('bpn').trim())?'':'disabled'}>${lines.length?`Guardar pedido · ${lines.reduce((a,l)=>a+l.q,0)} perfume${lines.reduce((a,l)=>a+l.q,0)>1?'s':''} · ${clp(total)}`:'Agrega al menos un perfume'}</button>`)}`;
@@ -520,6 +521,7 @@ const endFlow = () => { tab=ui.flowFrom||'inicio'; render(true); };
 
 /* ---------- actions ---------- */
 function saveBuy(){
+  const fl=V('bfl');
   let prov=V('bp','P3');
   const P0=S.proveedores.find(p=>p.id===prov)||{margen:.35};
   const lines=[...ui.lines]; if(V('bn').trim()&&num(V('bc'))){ const c=num(V('bc')); lines.push({name:titleCase(V('bn').trim()),q:Math.max(1,num(V('bq','1'))),cost:c,price:num(V('bv'))||Math.ceil(c/(1-P0.margen)/5000)*5000,ml:num(V('bm'))||100,tipo:V('bt','Árabe')}); }
@@ -528,6 +530,7 @@ function saveBuy(){
   commit(`Pedido guardado: ${nq} perfume${nq>1?'s':''} ${llego?'en stock':'en camino'}`, ()=>{
     if(prov==='new'){ const p={id:uid('P'),nombre:titleCase(V('bpn').trim()),margen:.35}; S.proveedores.push(p); prov=p.id; }
     const oid=uid('O'); S.compras.push({id:oid,prov,fecha,total,estado:llego?'Recibida':'En camino',nota:''});
+    if(llego&&fl!==''){ S.compras[S.compras.length-1].flete=num(fl); addGasto('Envío',num(fl),`Flete pedido ${(S.proveedores.find(p=>p.id===prov)||{nombre:V('bpn')}).nombre}`,{compra:oid}); }
     let max=Math.max(...S.bottles.map(b=>+b.id.slice(1)||0));
     for(const l of lines) for(let i=0;i<l.q;i++) S.bottles.push({id:'B'+pad(++max),name:l.name,tipo:l.tipo||'Árabe',ml:l.ml||100,cost:l.cost,price:l.price,estado:llego?'Stock':'En camino',venta:'',compra:oid,fCompra:fecha,fSalida:null,nota:''});
     if(ahora>0) S.deudas.push({id:uid('Q'),compra:oid,monto:ahora,vence:fecha,pagado:fecha});
@@ -734,18 +737,20 @@ function vVender(){
       actionbar(`<button class="btn ghost" data-a="vStep" data-v="1">Atrás</button><button class="btn" data-a="vStep" data-v="3" ${ok?'':'disabled'}>Siguiente</button>`);
   }
   const sel=ui.cliPick&&S.clientes.find(c=>c.id===ui.cliPick), dia=sel?sel.dia:(num(V('ncd'))||null);
-  const edited=V('stot')!=='', T=edited?num(V('stot')):L, n=ui.n, pie=n>1&&ui.pieOn?Math.min(num(V('spie')),T):0, fecha=V('sf',today());
+  const edited=V('stot')!=='', T0=edited?num(V('stot')):L, envA=ui.entrega==='envio'?num(V('senv')):0, envCli=ui.envPaga==='cliente'?envA:0, T=T0+envCli, n=ui.n, pie=n>1&&ui.pieOn?Math.min(num(V('spie')),T):0, fecha=V('sf',today());
   const camino=ch.filter(c=>c.camino);
   let sched=''; if(T){ if(n===1) sched=`<div class="r"><span>Pagado el ${fmtDay(fecha)}</span><b>${clp(T)}</b></div>`;
     else { const ds=schedule(fecha,n,dia), ms=split(Math.max(0,T-pie),n); sched=(pie?`<div class="r"><span>Pie · ${fmtDate(fecha)}</span><b>${clp(pie)}</b></div>`:'')+ds.map((d,i)=>`<div class="r"><span>Cuota ${i+1} · ${fmtDay(d)}</span><b>${clp(ms[i])}</b></div>`).join('')+`<span class="s">${dia?`Día ${dia} de cada mes.`:'5° día hábil del mes siguiente.'}</span>`; } }
   return head+`<div class="card"><div class="row" style="padding:0;border:0"><div class="main"><div class="t">${esc(sel?sel.nombre:V('ncn',V('sc')))}</div><div class="s" style="white-space:normal">${esc(ch.map(c=>c.nombre+(c.qty>1?' ×'+c.qty:'')).join(', '))}</div></div></div>
     <div class="grid2"><div class="field"><label for="stot">Total</label><input id="stot" data-k data-r inputmode="numeric" value="${esc(edited?V('stot'):L.toLocaleString('es-CL'))}"></div>
-    <div class="field"><span class="flab">Ganas</span><span style="font-weight:700;padding:11px 0">${clp(T-C)} <span class="s">(${T?Math.round((T-C)/T*100):0}%)</span></span></div></div>
+    <div class="field"><span class="flab">Ganas</span><span style="font-weight:700;padding:11px 0">${clp(T0-C)} <span class="s">(${T0?Math.round((T0-C)/T0*100):0}%)</span></span></div></div>
     ${edited&&T!==L?`<span class="s">${T<L?'Descuento de '+clp(L-T):'Recargo de '+clp(T-L)} sobre el precio de lista.</span>`:''}
     ${camino.length?`<span class="s">Preventa: ${esc(camino.map(c=>c.nombre).join(', '))} aún no llega. Queda "por entregar" y te aviso en Stock.</span>`:''}</div>
   <div class="field" style="margin-top:14px"><span class="flab">Forma de pago</span><div class="seg">${[1,2,3,4].map(x=>`<button data-a="ncuotas" data-n="${x}" ${pressed(x===n)}>${x===1?'Contado':x+' cuotas'}</button>`).join('')}${n>4?`<button ${pressed(true)}>${n} cuotas</button>`:`<button data-a="ncuotas" data-n="${n<5?5:n+1}">Más…</button>`}</div></div>
   ${n>1?`<label class="radio" style="margin-top:12px"><input type="checkbox" data-a="pieT" id="pieT" ${ui.pieOn?'checked':''}><span>Dejó pie</span></label>${ui.pieOn?`<div class="field" style="margin-top:8px"><label for="spie">¿Cuánto?</label><input id="spie" data-k data-r inputmode="numeric" value="${esc(V('spie'))}"></div>`:''}`:''}
   ${n===1||pie?`<div class="field" style="margin-top:12px"><span class="flab">${n===1?'¿Cómo te pagó?':'¿Cómo pagó el pie?'}</span>${segBtns('pMedio',[['Transferencia','Transferencia'],['Efectivo','Efectivo']],ui.pMedio)}</div>`:''}
+  <div class="field" style="margin-top:12px"><span class="flab">¿Cómo lo entregas?</span>${segBtns('entrega',[['mano','En mano'],['envio','Envío'],['retiro','Retiro']],ui.entrega)}</div>
+  ${ui.entrega==='envio'?`<div class="box" style="margin-top:8px"><span class="flab">¿Cuánto cuesta el envío?</span>${costChips('senv','Envío','Sin costo')}<span class="flab">¿Quién lo paga?</span>${segBtns('envPaga',[['yo','Yo'],['cliente','El cliente (se suma)']],ui.envPaga)}${envCli?`<span class="s">Total con envío: ${clp(T)}</span>`:envA?'<span class="s">Se anota como gasto de envío.</span>':''}</div>`:''}
   <div class="sched" style="margin-top:14px">${sched||'<span>Escribe el total.</span>'}</div>
   <p class="note">Fecha de la venta: ${fmtDay(fecha)} · <button class="linkbtn" data-a="showFecha">cambiar</button></p>
   ${ui.showFecha?`<div class="field"><label for="sf">Fecha de la venta</label><input id="sf" data-k data-r type="date" value="${esc(fecha)}"></div>`:''}
@@ -754,7 +759,7 @@ function vVender(){
 
 /* ---------- Cierre ---------- */
 function vCierre(){
-  const k=calc(), st=ui.cStep, K=k.K, needCap=S.cfg.capital==null, steps=needCap?5:4;
+  const k=calc(), st=ui.cStep, K=k.K, needCap=S.cfg.capital==null, steps=needCap?6:5;
   const head=`${topbar('Cierre de mes','cancel','✕')}${stepDots(st,steps)}`;
   const q=(id,label,ph,next,prev)=>head+`<div class="field"><label for="${id}" style="font-size:18px;font-family:var(--display);font-weight:400">${label}</label><input id="${id}" data-k data-r inputmode="numeric" placeholder="${ph}" value="${esc(V(id))}"></div>`+actionbar(`${prev?`<button class="btn ghost" data-a="cStep" data-v="${prev}">Atrás</button>`:''}<button class="btn" data-a="cStep" data-v="${next}" ${V(id)!==''?'':'disabled'}>Siguiente</button>`);
   if(st===1) return q('kb','¿Cuánto hay hoy en la cuenta de los perfumes?',K?'La vez pasada: '+K.banco.toLocaleString('es-CL'):'',2,0);
@@ -762,6 +767,7 @@ function vCierre(){
   if(st===3){ const desde=K?K.fecha:'0', ef=S.pagos.filter(p=>p.medio==='Efectivo'&&(p.fecha||'')>=desde).reduce((a,p)=>a+p.monto,0), dep=S.movs.filter(m=>m.tipo==='Depósito efectivo'&&(m.fecha||'')>=desde).reduce((a,m)=>a+m.monto,0);
     return q('ke','¿Cuánto hay en la caja de efectivo?',K&&K.efectivo?'La vez pasada: '+K.efectivo.toLocaleString('es-CL'):'0 si no hay',4,2).replace('</div><div class="actionbar"',`<span class="s">Cuenta la caja chica y lo que tengan Mati y Wanda del negocio.${ef?` Desde el último cierre recibiste ${clp(ef)} en efectivo${dep?` y depositaste ${clp(dep)}`:''}.`:''}</span></div><div class="actionbar"`); }
   if(st===4 && needCap) return q('kc','¿Cuánta plata tuya pusiste al partir?','Solo se pregunta una vez',5,3);
+  if(st===steps-1) return vOlvido(head,steps,steps-2);
   const sim={...k, caja:num(V('kb'))+num(V('ka'))+num(V('ke'))}; sim.aportes=k.aportes-(S.cfg.capital||0)+(needCap?num(V('kc')):(S.cfg.capital||0)); sim.segunPlata=k.segunPlata-k.caja+sim.caja-(sim.aportes-k.aportes);
   const diff=sim.segunPlata-sim.neta, ok=cuadra(sim);
   return head+`<h2 style="margin-top:4px">${ok?'¡Cuadra!':diff<0?`Faltan ${clp(-diff)}`:`Sobran ${clp(diff)}`}</h2>
@@ -788,6 +794,7 @@ function vBottleSheet(b){
   if(a==='Abrir'){ const est=num(V('de',String(Math.floor(b.ml/5)))), p5=num(V('d5'))||sugP5(b), p10=V('d10')===''?sugP10(p5):num(V('d10'));
     body=`<div class="grid2"><div class="field"><label for="d5">Precio 5 ml</label><input id="d5" data-k data-r inputmode="numeric" placeholder="${sugP5(b).toLocaleString('es-CL')}" value="${esc(V('d5'))}"></div><div class="field"><label for="d10">Precio 10 ml</label><input id="d10" data-k data-r inputmode="numeric" placeholder="${sugP10(p5).toLocaleString('es-CL')}" value="${esc(V('d10'))}"></div></div>
       <div class="field"><label for="de">¿Cuántos de 5 ml salen, más o menos?</label><input id="de" data-k data-r inputmode="numeric" value="${esc(V('de',String(Math.floor(b.ml/5))))}"><span class="s">No tiene que ser exacto. Un 10 ml cuenta como 2. Cada 5 ml te cuesta ~${clp(est?b.cost/est:0)}, así que ganas ~${clp(p5-(est?b.cost/est:0))} por decant de 5 ml.</span></div>
+      <div class="field"><span class="flab">¿Compraste frascos o atomizadores para estos decants?</span>${costChips('dfr','Frascos decant','No')}</div>
       <div class="acts">${back}<button class="btn" data-a="abrir" data-id="${b.id}" ${est?'':'disabled'}>Abrir botella</button></div>`; }
   else if(a==='Precios'){ body=`<div class="grid2"><div class="field"><label for="d5">Precio 5 ml</label><input id="d5" data-k inputmode="numeric" value="${esc(V('d5',b.dec.p5.toLocaleString('es-CL')))}"></div><div class="field"><label for="d10">Precio 10 ml</label><input id="d10" data-k inputmode="numeric" value="${esc(V('d10',(b.dec.p10||0).toLocaleString('es-CL')))}"></div></div>
       <div class="field"><label for="de">¿Cuántos de 5 ml salen en total?</label><input id="de" data-k inputmode="numeric" value="${esc(V('de',String(b.dec.est)))}"></div>
@@ -850,6 +857,7 @@ function vLlegadaSheet(c){
   const n=bs.filter(b=>ui.llegaSel[b.id]).length;
   return `<div class="grab"></div><h2 style="margin:0">¿Qué llegó?</h2><p class="note" style="margin-top:4px">${esc(provName(c.prov))} · pedido del ${fmtDate(c.fecha)}. Marca lo que llegó; lo demás sigue en camino.</p>
   <div class="list">${bs.map(b=>`<div class="row"><label class="radio" style="flex:1;align-items:center"><input type="checkbox" data-a="llegaT" data-id="${b.id}" ${ui.llegaSel[b.id]?'checked':''}><span><b>${esc(b.name)}</b>${b.porEntregar?' <span class="chip n">vendido</span>':''}</span></label><button class="linkbtn" data-a="noLlegoB" data-id="${b.id}">No llegó</button></div>`).join('')}</div>
+  ${c.flete==null?`<div class="field"><span class="flab">¿Pagaste flete al recibirlo?</span>${costChips('lfl','Envío','No')}</div>`:''}
   <div class="acts"><button class="btn ghost" data-a="closeSheet">Cancelar</button><button class="btn" data-a="llegaSave" data-id="${c.id}" ${n?'':'disabled'}>Llegaron ${n}</button></div>`;
 }
 function vHistSheet(kind,i){
@@ -881,6 +889,7 @@ function render(top){
     else if(s.t==='share') inner=vShareSheet(s);
     else if(s.t==='pw') inner=(typeof vPwSheet==='function')?vPwSheet(ui.pwErr):'';
     else if(s.t==='consVend'||s.t==='consDev') inner=(typeof vConsSheet==='function')?vConsSheet(s):'';
+    else if(s.t==='gastoQuick') inner=vGastoQuick(s);
     else if(s.t==='consPremio') inner=(typeof vPremioSheet==='function')?vPremioSheet(s):'';
     if(!inner){ ui.sheet=null; sh.hidden=true; sh.innerHTML=''; } else { sh.innerHTML=`<div class="panel" role="dialog" aria-modal="true">${inner}</div>`; sh.hidden=false; } }
   else { sh.hidden=true; sh.innerHTML=''; }
@@ -890,8 +899,8 @@ function render(top){
 }
 function startFlow(f,extra={}){
   ui.flowFrom=tab.startsWith('f_')?ui.flowFrom:tab; ui.sheet=null;
-  if(f==='f_vender'){ picks=extra.picks||{}; ui.vStep=extra.step||1; ui.cliPick=null; ui.newCli=false; ui.n=1; ui.pieOn=false; ui.showFecha=false; ui.pMedio='Transferencia'; clearForm('sq2','sc','ncn','nct','ncd','stot','spie','sf'); }
-  if(f==='f_compra'){ ui.lines=[]; ui.more=false; ui.buyLlego=true; ui.buyPago='todo'; clearForm('bp','bn','bq','bc','bv','bm','bt','bpa','bpv','bpn'); }
+  if(f==='f_vender'){ picks=extra.picks||{}; ui.vStep=extra.step||1; ui.cliPick=null; ui.newCli=false; ui.n=1; ui.pieOn=false; ui.showFecha=false; ui.pMedio='Transferencia'; ui.entrega=S.cfg.lastEntrega||'mano'; ui.envPaga='yo'; clearForm('sq2','sc','ncn','nct','ncd','stot','spie','sf','senv'); }
+  if(f==='f_compra'){ ui.lines=[]; ui.more=false; ui.buyLlego=true; ui.buyPago='todo'; clearForm('bp','bn','bq','bc','bv','bm','bt','bpa','bpv','bpn','bfl'); }
   if(f==='f_pago'){ ui.pagoCli=extra.id||null; ui.pMedio='Transferencia'; ui.pRecibe=ui.vend; clearForm('pq','pm','pf','pmode'); }
   if(f==='f_gasto'){ ui.gCat='Envío'; clearForm('gm','gd','gf'); }
   if(f==='f_mov'){ ui.movT='Ahorro'; clearForm('rm','rd'); }
@@ -974,6 +983,8 @@ const A = {
   cliNew(){ ui.newCli=true; FORM.ncn=V('sc').trim(); render(); },
   cliUnpick(){ ui.cliPick=null; ui.newCli=false; render(); },
   vend(d){ ui.vend=d.v; render(); },
+  entrega(d){ ui.entrega=d.v; render(); },
+  envPaga(d){ ui.envPaga=d.v; render(); },
   ncuotas(d){ ui.n=+d.n; render(); },
   pieT(d,el){ ui.pieOn=el.checked; render(); },
   showFecha(){ ui.showFecha=!ui.showFecha; render(); },
@@ -983,15 +994,17 @@ const A = {
   // stock
   stockSeg(d){ ui.stockSeg=d.seg; render(); },
   stockF(d){ ui.stockF=d.v; ui.stockSeg='stock'; if(tab!=='stock') goTo('stock'); else render(); },
-  bottle(d){ ui.sheet={t:'bottle',id:d.id}; ui.bAct=null; clearForm('d5','d10','de','bnn','nl','nlf'); render(); },
+  bottle(d){ ui.sheet={t:'bottle',id:d.id}; ui.bAct=null; clearForm('d5','d10','de','bnn','nl','nlf','dfr'); render(); },
   bAct(d){ ui.bAct=d.v||null; render(); },
   abrir(d){ const b=S.bottles.find(x=>x.id===d.id), est=num(V('de',String(Math.floor(b.ml/5)))), p5=num(V('d5'))||sugP5(b), p10=V('d10')===''?sugP10(p5):num(V('d10')); ui.sheet=null; clearForm('d5','d10','de');
-    commit(`${b.name} abierta para decants`, ()=>{ b.estado='Abierta'; b.fSalida=today(); b.dec={p5,p10,est,abierta:today(),cerrada:null,ajuste:0}; }); ui.stockF='Abiertas'; render(); },
+    const fr=num(V('dfr')); clearForm('dfr');
+    commit(`${b.name} abierta para decants`, ()=>{ b.estado='Abierta'; b.fSalida=today(); b.dec={p5,p10,est,abierta:today(),cerrada:null,ajuste:0}; addGasto('Frascos decant',fr,`Frascos para ${b.name}`,{bottle:b.id}); }); ui.stockF='Abiertas'; render(); },
   precios(d){ const b=S.bottles.find(x=>x.id===d.id); const p5=num(V('d5',String(b.dec.p5)))||b.dec.p5, p10=num(V('d10',String(b.dec.p10||0))), est=num(V('de',String(b.dec.est)))||b.dec.est; ui.bAct=null; clearForm('d5','d10','de');
     commit('Precios de decants guardados', ()=>{ Object.assign(b.dec,{p5,p10,est}); }); },
   terminar(d){ const b=S.bottles.find(x=>x.id===d.id), s=decStats(b); ui.sheet=null;
     commit(`${b.name}: botella terminada`, ()=>{ b.estado='Agotada'; b.dec.cerrada=today(); b.dec.ajuste=b.cost-s.costo; }); },
-  llego(d){ const b=S.bottles.find(x=>x.id===d.id); ui.sheet=null; commit(`${b.name} llegó: ya está en stock`, ()=>{ b.estado='Stock'; updCompra(b.compra); }); },
+  llego(d){ const b=S.bottles.find(x=>x.id===d.id), c=S.compras.find(x=>x.id===b.compra); ui.sheet=null; commit(`${b.name} llegó: ya está en stock`, ()=>{ b.estado='Stock'; updCompra(b.compra); });
+    if(c&&c.flete==null) nudge(`${b.name} llegó. ¿Pagaste flete al recibirlo?`,'Anotar',{cat:'Envío',det:`Flete pedido ${provName(c.prov)}`,title:'¿Cuánto pagaste de flete?',ref:JSON.stringify({compra:c.id})}); },
   entregar(d){ const b=S.bottles.find(x=>x.id===d.id); ui.sheet=null; commit(`${b.name} entregado`, ()=>{ b.porEntregar=false; }); },
   noLlego(d){ const b=S.bottles.find(x=>x.id===d.id), opt=V('nl','reembolso'), nota=V('bnn'), f=V('nlf',addDays(today(),10)); ui.sheet=null; clearForm('nl','nlf','bnn');
     commit(opt==='repone'?`${b.name}: sigue en camino`:`${b.name}: ${opt==='perdida'?'pérdida anotada':'devolución anotada'}`, ()=>{
@@ -1004,11 +1017,12 @@ const A = {
       S.deudas=S.deudas.filter(q=>q.monto>0);
       if(rest>0) S.movs.push({fecha:today(),tipo:'Devolución proveedor',monto:rest,det:b.name}); updCompra(b.compra); }); },
   noLlegoB(d){ ui.sheet={t:'bottle',id:d.id}; ui.bAct='NoLlego'; clearForm('nl','nlf','bnn'); render(); },
-  llegada(d){ ui.sheet={t:'llegada',id:d.id}; ui.llegaSel=null; render(); },
+  llegada(d){ ui.sheet={t:'llegada',id:d.id}; ui.llegaSel=null; clearForm('lfl'); render(); },
   llegaT(d,el){ ui.llegaSel[d.id]=el.checked; render(); },
-  llegaSave(d){ const ids=Object.keys(ui.llegaSel).filter(id=>ui.llegaSel[id]); ui.sheet=null;
+  llegaSave(d){ const ids=Object.keys(ui.llegaSel).filter(id=>ui.llegaSel[id]), fl=V('lfl'); ui.sheet=null;
     commit(`${ids.length} perfume${ids.length>1?'s':''} llegaron`, ()=>{ for(const id of ids){ const b=S.bottles.find(x=>x.id===id); if(b.porEntregar){ /* vendido en preventa: sigue por entregar hasta que lo entregue */ b.llego=true; } else b.estado='Stock'; }
-      const c=S.compras.find(x=>x.id===d.id); if(!S.bottles.some(b=>b.compra===c.id&&b.estado==='En camino')) c.estado='Recibida'; }); },
+      const c=S.compras.find(x=>x.id===d.id); if(!S.bottles.some(b=>b.compra===c.id&&b.estado==='En camino')) c.estado='Recibida';
+      if(fl!=='') { c.flete=num(fl); addGasto('Envío',num(fl),`Flete pedido ${provName(c.prov)}`,{compra:c.id}); } }); clearForm('lfl'); },
   bMark(d){ const b=S.bottles.find(x=>x.id===d.id), e=d.v, nota=V('bnn'); ui.sheet=null; clearForm('bnn');
     commit(e==='Stock'?`${b.name} vuelve a stock`:`${b.name}: ${e==='Uso propio'?'te lo quedaste':e.toLowerCase()}`, ()=>{ b.estado=e; b.fSalida=e==='Stock'?null:today(); b.nota=nota; if(e==='Uso propio') S.movs.push({fecha:today(),tipo:'Uso propio',monto:b.cost,det:b.name}); }); },
   payProv(d){ const q=S.deudas.find(x=>x.id===d.id); commit(`Pago de ${clp(q.monto)} al proveedor anotado`, ()=>{ q.pagado=today(); }); },
@@ -1045,9 +1059,13 @@ const A = {
 function saveSale(){
   const ch=chosenItems(); if(!ch.length) return;
   const items=[]; for(const c of ch) for(let i=0;i<c.qty;i++) items.push(c.dec?{t:'d',ref:c.ref,size:c.size,u:c.u,nombre:c.nombre,lista:c.lista,costo:c.costos[i]}:{t:'b',ref:c.ref,nombre:c.nombre,lista:c.lista,costo:c.costo});
-  const L=items.reduce((a,i)=>a+i.lista,0), T=V('stot')!==''?num(V('stot')):L; if(!T) return;
+  const L=items.reduce((a,i)=>a+i.lista,0), T0=V('stot')!==''?num(V('stot')):L; if(!T0) return;
   // reparte el total real entre los productos, así la ganancia usa el precio de verdad
-  let acc=0; items.forEach((it,i)=>{ it.precio = i===items.length-1 ? T-acc : (L?Math.round(it.lista*T/L):Math.round(T/items.length)); acc+=it.precio; });
+  let acc=0; items.forEach((it,i)=>{ it.precio = i===items.length-1 ? T0-acc : (L?Math.round(it.lista*T0/L):Math.round(T0/items.length)); acc+=it.precio; });
+  // envío: si lo paga el cliente se suma al total (ingreso y costo iguales); si lo paga Mati, es un gasto
+  const entrega=ui.entrega||'mano', envA=entrega==='envio'?num(V('senv')):0, envCli=ui.envPaga==='cliente'?envA:0;
+  if(envCli) items.push({t:'x',ref:null,nombre:'Envío (lo paga el cliente)',lista:envCli,precio:envCli,costo:envCli});
+  const T=T0+envCli;
   let n=ui.n; const fecha=V('sf',today()), pie0=n>1&&ui.pieOn?Math.min(num(V('spie')),T):0; if(n>1&&pie0>=T) n=1; const pie=n>1?pie0:0, nv=Math.max(S.cfg.nextV||0,...S.ventas.map(v=>+v.id.slice(1)||0),0)+1, id='V'+pad(nv), medio=ui.pMedio, rec=ui.vend;
   let name='';
   commit('', ()=>{
@@ -1056,7 +1074,8 @@ function saveSale(){
     if(!k){ k={id:uid('K'),nombre:titleCase(V('ncn',V('sc')).trim()),tel:normTel(V('nct')),dia:num(V('ncd'))||null,notas:'',ult:null,favor:0}; if(k.tel.length<11) k.tel=''; S.clientes.push(k); }
     name=k.nombre;
     for(const it of items) if(it.t==='b'){ const b=S.bottles.find(x=>x.id===it.ref); if(b.estado==='En camino') b.porEntregar=true; b.estado='Vendido'; b.venta=id; b.fSalida=fecha; }
-    S.ventas.push({id,cliente:k.id,fecha,vendedor:ui.vend,total:T,pie,items});
+    S.ventas.push({id,cliente:k.id,fecha,vendedor:ui.vend,total:T,pie,items,entrega});
+    if(envA&&!envCli) addGasto('Envío',envA,`Envío venta ${id} a ${k.nombre}`,{venta:id}); S.cfg.lastEntrega=entrega;
     if(n===1){ const c={id:uid('C'),venta:id,n:1,monto:T,vence:fecha}; S.cuotas.push(c); S.pagos.push({id:uid('G'),cuota:c.id,fecha,monto:T,tipo:'contado',medio,recibio:rec}); }
     else { if(pie){ const c={id:uid('C'),venta:id,n:0,monto:pie,vence:fecha}; S.cuotas.push(c); S.pagos.push({id:uid('G'),cuota:c.id,fecha,monto:pie,tipo:'pie',medio,recibio:rec}); }
       const ds=schedule(fecha,n,k.dia), ms=split(T-pie,n); ds.forEach((d,i)=>S.cuotas.push({id:uid('C'),venta:id,n:i+1,monto:ms[i],vence:d})); }
@@ -1282,6 +1301,7 @@ function vConsignaFlow(){
   ${isNew?`<div class="grid2" style="margin-top:10px"><div class="field"><label for="cvn">Nombre</label><input id="cvn" data-k data-r placeholder="Ej: Juan (gimnasio)" value="${esc(V('cvn'))}"></div><div class="field"><label for="cvt">WhatsApp</label><input id="cvt" data-k inputmode="tel" placeholder="9 1234 5678" value="${esc(V('cvt'))}"></div></div>`:''}
   ${ab.length?`<h3>Decants</h3><div class="list">${ab.map(b=>{ const s=decStats(b); return `<div class="row" style="display:block"><div class="t">${esc(b.name)} <span class="s">· quedan ~${s.quedan} de 5 ml</span></div>${stp(b.id+'|5','5 ml',b.dec.p5)}${b.dec.p10?stp(b.id+'|10','10 ml',b.dec.p10):''}</div>`; }).join('')}</div>`:'<p class="note">Para mandar decants, primero abre la botella en Stock → Abrir para decants.</p>'}
   <h3>Botellas</h3><div class="list" style="max-height:260px;overflow:auto">${bs.map(b=>`<button class="rowbtn ${picks[b.id]?'on':''}" data-a="${picks[b.id]?'unpick':'pick'}" data-id="${b.id}"><div class="main"><div class="t">${esc(b.name)}</div><div class="s">${b.ml} ml</div></div><span class="amt">${clp(b.price)}</span><span class="chip ${picks[b.id]?'ok':'d'}">${picks[b.id]?'✓':'+'}</span></button>`).join('')||'<div class="empty">Sin botellas en stock.</div>'}</div>
+  <div class="field" style="margin-top:12px"><span class="flab">¿Cuánto pagaste de envío?</span>${costChips('cenv','Envío','En mano, sin costo')}</div>
   ${actionbar(`<button class="btn" data-a="consSave" ${nUnits&&(!isNew||V('cvn').trim())?'':'disabled'}>${nUnits?`Mandar ${nUnits} · ${clp(total)}`:'Elige qué mandaste'}</button>`)}`;
 }
 
@@ -1297,7 +1317,7 @@ vAddSheet=function(){ return _vAddSheet().replace('<button class="btn ghost bloc
   `<button class="addrow" data-a="flow" data-f="f_consigna"><span class="ic am"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7h11v9H3zM14 10h4l3 3v3h-7z"/><circle cx="7" cy="17.5" r="1.6"/><circle cx="17" cy="17.5" r="1.6"/></svg></span><span class="main"><span class="t" style="display:block">Mandé a vender</span><span class="s">Decants o perfumes que otra persona vende por ti</span></span></button>
   <button class="btn ghost block" data-a="closeSheet">Cancelar</button>`); };
 const _startFlow=startFlow;
-startFlow=function(f,extra={}){ if(f==='f_consigna'){ ui.flowFrom=tab.startsWith('f_')?ui.flowFrom:tab; ui.sheet=null; picks={}; ui.consV=extra.id||null; clearForm('cv','cvn','cvt'); tab=f; render(true); return; } return _startFlow(f,extra); };
+startFlow=function(f,extra={}){ if(f==='f_consigna'){ ui.flowFrom=tab.startsWith('f_')?ui.flowFrom:tab; ui.sheet=null; picks={}; ui.consV=extra.id||null; clearForm('cv','cvn','cvt','cenv'); tab=f; render(true); return; } return _startFlow(f,extra); };
 const _vInicio=vInicio;
 vInicio=function(){ const k=calc(), h=_vInicio(); if(!k.nConsig) return h;
   const names=[...new Set((S.consignas||[]).flatMap(g=>g.items.filter(i=>i.estado==='fuera').map(()=>vendOf(g.vendedor)?.nombre)))].filter(Boolean).join(', ');
@@ -1329,7 +1349,7 @@ Object.assign(A,{
   premioCompra(d){ const v=vendOf(ui.sheet.id), c=num(V('prc')); if(!c){ toast('Escribe cuánto te costó'); return; } ui.sheet=null; clearForm('prc');
     commit(`Premio entregado a ${v.nombre}`, ()=>{ v.premio.entregado=today(); S.gastos.push({fecha:today(),cat:'Comisión',det:`Premio de ${v.nombre}: ${v.premio.desc}`,monto:c}); }); },
   consSave(){ let vid=V('cv',ui.consV||(vendedores()[0]&&vendedores()[0].id)||'new'); const ch=Object.entries(picks).filter(([,q])=>q>0); if(!ch.length) return;
-    const nombre=V('cvn').trim(), tel=normTel(V('cvt'));
+    const nombre=V('cvn').trim(), tel=normTel(V('cvt')), envio=V('cenv');
     commit('Anotado: productos en consignación', ()=>{
       if(vid==='new'){ const v={id:uid('W'),nombre,tel:tel.length===11?tel:'',cliente:null,premio:null,cobro:'mes'}; vendedores().push(v); vid=v.id; }
       const g={id:uid('G'),vendedor:vid,fecha:today(),items:[]}; const cargado={};
@@ -1338,6 +1358,7 @@ Object.assign(A,{
           if(cargado[id]==null) cargado[id]=decStats(b).costo;
           for(let n=0;n<q;n++){ const c=decCost(b,u,cargado[id]); cargado[id]+=c; g.items.push({id:uid('I'),t:'d',ref:id,size,u,nombre:`${b.name} · ${size} ml`,precio:size===10?b.dec.p10:b.dec.p5,costo:c,estado:'fuera'}); } }
         else { const b=S.bottles.find(x=>x.id===key); g.items.push({id:uid('I'),t:'b',ref:b.id,nombre:b.name,precio:b.price,costo:b.cost,estado:'fuera'}); b.estado='Consignación'; } }
+      if(envio!==''){ g.envio=num(envio); addGasto('Envío',num(envio),`Envío a ${(vendOf(vid)||{nombre}).nombre}`,{consigna:g.id}); }
       consignas().push(g); });
     picks={}; ui.stockSeg='consigna'; tab='stock'; render(true); },
 });
@@ -1349,6 +1370,67 @@ function vPremioSheet(s){ const v=vendOf(s.id); if(!v||!v.premio) return '';
   <div class="list" style="max-height:240px;overflow:auto">${bs.map(b=>`<button class="rowbtn" data-a="premioB" data-id="${b.id}"><div class="main"><div class="t">${esc(b.name)}</div><div class="s">${b.ml} ml · costo ${clp(b.cost)}</div></div></button>`).join('')||'<div class="empty">No hay una así en stock.</div>'}</div>
   <div class="field"><label for="prc">¿La compraste aparte? Anota cuánto te costó</label><div style="display:flex;gap:8px"><input id="prc" data-k inputmode="numeric" value="${esc(V('prc'))}"><button class="btn sm" data-a="premioCompra">Guardar</button></div></div>
   <button class="btn ghost block" data-a="closeSheet">Cancelar</button>`; }
+
+/* ===================== Recordar costos =====================
+   La app pregunta por el costo en el mismo momento en que se anota algo que suele tenerlo
+   (envío al vender o mandar a vender, flete al recibir un pedido, frascos al abrir para decants),
+   sugiere montos según lo que Mati ha pagado antes, y al cerrar el mes revisa qué pudo quedar sin anotar. */
+const COST_DEF={'Envío':[3900,5100,6350],'Frascos decant':[5000,10000,20000]};
+function sugAmounts(cat){
+  // solo gastos con fecha: los totales sueltos del Excel no son un envío real
+  const g=S.gastos.filter(x=>x.cat===cat&&x.fecha&&x.monto>0&&x.monto<100000).slice(-30), f=new Map();
+  g.forEach((x,i)=>f.set(x.monto,(f.get(x.monto)||0)+1+i/1000));
+  const top=[...f.entries()].sort((a,b)=>b[1]-a[1]).map(e=>e[0]);
+  for(const d of COST_DEF[cat]||[]) if(top.length<3&&!top.includes(d)) top.push(d);
+  return top.slice(0,3).sort((a,b)=>a-b);
+}
+// botones con montos sugeridos + "No pagué" + otro monto
+function costChips(fid,cat,noLabel='No pagué'){
+  const cur=V(fid), sug=sugAmounts(cat), isSug=sug.includes(num(cur));
+  return `<div class="chips">${sug.map(a=>`<div class="seg"><button data-a="chip" data-f="${fid}" data-v="${a}" ${pressed(cur!==''&&num(cur)===a)}>${clp(a)}</button></div>`).join('')}<div class="seg"><button data-a="chip" data-f="${fid}" data-v="0" ${pressed(cur==='0')}>${noLabel}</button></div></div>
+  <input id="${fid}" data-k data-r inputmode="numeric" placeholder="Otro monto" style="margin-top:6px" value="${esc(cur!==''&&cur!=='0'&&!isSug?num(cur).toLocaleString('es-CL'):'')}">`;
+}
+A.chip=d=>{ FORM[d.f]=d.v; render(); };
+function addGasto(cat,monto,det,ref){ if(monto>0) S.gastos.push({fecha:today(),cat,det,monto,ref:ref||null}); }
+
+/* hoja rápida para anotar un gasto desde un aviso */
+function vGastoQuick(s){
+  return `<div class="grab"></div><h2 style="margin:0">${esc(s.title||'Anotar gasto')}</h2><p class="note" style="margin:0">${esc(s.det)}</p>
+  ${costChips('gq',s.cat,'No hubo')}
+  <div class="acts"><button class="btn ghost" data-a="closeSheet">Ahora no</button><button class="btn" data-a="gqSave" ${V('gq')!==''?'':'disabled'}>Guardar</button></div>`;
+}
+A.gq=d=>{ ui.sheet={t:'gastoQuick',cat:d.cat,det:d.det,title:d.title,ref:d.ref?JSON.parse(d.ref):null}; clearForm('gq'); render(); };
+A.gqSave=()=>{ const s=ui.sheet, m=num(V('gq')); ui.sheet=null; clearForm('gq');
+  if(!m){ if(s.ref&&s.ref.compra){ const c=S.compras.find(x=>x.id===s.ref.compra); if(c){ c.flete=0; save(); } } if(s.ref&&s.ref.consigna){ const g=(S.consignas||[]).find(x=>x.id===s.ref.consigna); if(g){ g.envio=0; save(); } } render(); return; }
+  commit(`Gasto de ${clp(m)} anotado`, ()=>{ addGasto(s.cat,m,s.det,s.ref);
+    if(s.ref&&s.ref.compra){ const c=S.compras.find(x=>x.id===s.ref.compra); if(c) c.flete=m; }
+    if(s.ref&&s.ref.consigna){ const g=(S.consignas||[]).find(x=>x.id===s.ref.consigna); if(g) g.envio=m; } }); };
+// aviso con botón después de guardar algo
+function nudge(msg,label,data){ const t=$('#toast'); clearTimeout(toast.h);
+  t.innerHTML=`<span>${esc(msg)}</span><button id="nudgeBtn">${esc(label)}</button>`; t.hidden=false;
+  toast.h=setTimeout(()=>{ t.hidden=true; },12000);
+  $('#nudgeBtn').onclick=()=>{ t.hidden=true; A.gq(data); }; }
+
+/* cierre de mes: ¿olvidaste algo? */
+function olvidos(){
+  const K=S.saldos[S.saldos.length-1], desde=K?K.fecha:today().slice(0,7)+'-01', out=[];
+  for(const g of (S.consignas||[])) if(g.fecha>=desde&&g.envio==null){ const v=(S.vendedores||[]).find(x=>x.id===g.vendedor); out.push({t:`Mandaste productos a ${v?v.nombre:'un vendedor'} el ${fmtDate(g.fecha)}`,cat:'Envío',det:`Envío a ${v?v.nombre:'vendedor'}`,ref:{consigna:g.id}}); }
+  for(const c of S.compras) if(c.estado==='Recibida'&&c.fecha>=desde&&c.flete==null){ const p=S.proveedores.find(x=>x.id===c.prov); out.push({t:`Recibiste el pedido de ${p?p.nombre:'un proveedor'} (${fmtDate(c.fecha)})`,cat:'Envío',det:`Flete pedido ${p?p.nombre:''}`.trim(),ref:{compra:c.id}}); }
+  const ab=S.bottles.filter(b=>b.dec&&b.dec.abierta>=desde).length, fr=S.gastos.filter(g=>g.cat==='Frascos decant'&&(g.fecha||'')>=desde).length;
+  if(ab&&!fr) out.push({t:`Abriste ${ab} botella${ab>1?'s':''} para decants y no hay frascos anotados`,cat:'Frascos decant',det:'Frascos y atomizadores'});
+  const env=S.ventas.filter(v=>(v.fecha||'')>=desde&&v.entrega==='envio').length, envG=S.gastos.filter(g=>g.cat==='Envío'&&(g.fecha||'')>=desde).length;
+  if(env>envG) out.push({t:`Hiciste ${env} venta${env>1?'s':''} con envío y hay ${envG} envío${envG===1?'':'s'} anotado${envG===1?'':'s'}`,cat:'Envío',det:'Envío de una venta'});
+  return out;
+}
+function vOlvido(head,next,prev){
+  const list=olvidos();
+  return head+`<h2 style="margin-top:4px">¿Olvidaste algún gasto?</h2>
+  <p class="note" style="margin-top:-4px">Lo que suele tener un costo y no está anotado desde el último cierre.</p>
+  <div class="list">${list.map(o=>`<div class="row"><div class="main"><div class="t" style="white-space:normal">${esc(o.t)}</div><div class="s">${esc(o.cat)}</div></div><button class="btn sm" data-a="gq" data-cat="${esc(o.cat)}" data-det="${esc(o.det)}" data-title="${esc(o.cat==='Envío'?'¿Cuánto pagaste de envío?':'¿Cuánto gastaste?')}" ${o.ref?`data-ref='${JSON.stringify(o.ref)}'`:''}>Anotar</button></div>`).join('')||'<div class="empty">Todo lo que suele tener costo ya tiene su gasto. 👌</div>'}</div>
+  <h3>¿Y esto?</h3><p class="note" style="margin-top:-4px">Bolsas, cajas, etiquetas, publicidad, bencina…</p>
+  <div class="chips">${['Bolsas','Cajas','Etiquetas','Publicidad','Otro'].map(c=>`<div class="seg"><button data-a="gq" data-cat="${c}" data-det="${c} del mes" data-title="¿Cuánto gastaste en ${c.toLowerCase()}?">${c}</button></div>`).join('')}</div>`+
+  actionbar(`<button class="btn ghost" data-a="cStep" data-v="${prev}">Atrás</button><button class="btn" data-a="cStep" data-v="${next}">Siguiente</button>`);
+}
 
 /* ---------- events ---------- */
 document.addEventListener('click', e=>{
