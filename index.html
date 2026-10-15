@@ -1521,27 +1521,39 @@ function iaGrade(exp,res){
   });
   return errs;
 }
+// el avance se guarda en este teléfono: si se cierra la pantalla, la prueba sigue donde quedó
+const IAT_KEY='pasno-iatest';
+function iatLoad(){ if(ui.iaTest) return ui.iaTest; try{ const r=JSON.parse(localStorage.getItem(IAT_KEY)||'null'); if(r&&Array.isArray(r.res)) return ui.iaTest={running:false,res:r.res}; }catch(e){} return ui.iaTest={running:false,res:[]}; }
+function iatSave(){ try{ localStorage.setItem(IAT_KEY,JSON.stringify({res:ui.iaTest.res})); }catch(e){} }
 function vIATest(){
-  const T=ui.iaTest||{};
-  const done=(T.res||[]).length, ok=(T.res||[]).filter(r=>!r.errs.length).length, tin=(T.res||[]).reduce((a,r)=>a+(r.u?r.u.input_tokens:0),0), tout=(T.res||[]).reduce((a,r)=>a+(r.u?r.u.output_tokens:0),0);
+  const T=iatLoad(), N=iaTests().length;
+  const done=T.res.length, ok=T.res.filter(r=>!r.errs.length).length, tin=T.res.reduce((a,r)=>a+(r.u?r.u.input_tokens:0),0), tout=T.res.reduce((a,r)=>a+(r.u?r.u.output_tokens:0),0);
   const usd=tin/1e6*4+tout/1e6*20;
+  const btns=T.running?'':!done?`<button class="btn block" data-a="iaTestRun">Empezar la prueba</button>`
+    :`<div class="acts">${done<N?`<button class="btn" data-a="iaTestRun">Continuar (${done} de ${N})</button>`:''}<button class="btn ghost" data-a="iaTestRun" data-v="nueva">Empezar de nuevo</button></div>`;
   return `<div class="topbar"><button class="back" data-a="go" data-to="ajustes" aria-label="Volver">←</button><h2>Probar la IA</h2></div>
-  <p class="note" style="margin-top:0">Manda ${iaTests().length} frases escritas como las diría Mati y revisa si la IA propone lo correcto. No guarda nada. Usa la IA ${iaTests().length} veces (aprox. USD 0,50–1 con Claude Opus 5.5).</p>
-  ${!T.running&&!done?`<button class="btn block" data-a="iaTestRun">Empezar la prueba</button>`:''}
-  ${done?`<div class="card" style="margin-top:12px"><span class="lab">Resultado${T.running?' (en curso)':''}</span><span style="font-size:22px;font-weight:700">${ok} de ${done} correctas</span><span class="s">${tin.toLocaleString('es-CL')} tokens de entrada · ${tout.toLocaleString('es-CL')} de salida · costo aprox. USD ${usd.toFixed(3)}</span></div>
+  <p class="note" style="margin-top:0">Manda ${N} frases escritas como las diría Mati y revisa si la IA propone lo correcto. No guarda nada. Usa la IA ${N} veces (aprox. USD 0,50–1 con Claude Opus 5.5) y no cuenta para el límite diario de uso normal.</p>
+  ${T.error?`<div class="warnbox" style="margin-top:12px">Se detuvo: ${esc(T.error)}</div>`:''}
+  ${btns}
+  ${done?`<div class="card" style="margin-top:12px"><span class="lab">Resultado${T.running?' (en curso)':done<N?' (a medias)':''}</span><span style="font-size:22px;font-weight:700">${ok} de ${done} correctas</span><span class="s">${tin.toLocaleString('es-CL')} tokens de entrada · ${tout.toLocaleString('es-CL')} de salida · costo aprox. USD ${usd.toFixed(3)}</span></div>
   <div class="list" style="margin-top:12px">${T.res.map(r=>`<div class="row"><div class="main"><div class="t" style="white-space:normal">${r.errs.length?'✗':'✓'} ${esc(r.t)}</div><div class="s" style="white-space:normal">${r.errs.length?esc(r.errs.join(' · ')):esc((r.out.acciones||[]).map(a=>a.resumen).join(' / ')||(r.out.preguntas||[]).join(' ')||'sin registros')}</div></div></div>`).join('')}</div>`:''}
-  ${T.running?'<p class="note">Probando… puedes dejar esta pantalla abierta.</p>':''}`;
+  ${T.running?'<p class="note">Probando… si cierras la pantalla, al volver puedes continuar donde quedó.</p>':''}`;
 }
 SCREENS.iatest=vIATest;
 A.iaTestOpen=()=>{ goTo('iatest'); };
-A.iaTestRun=async()=>{ if(!CLOUD||!sb){ toast('La prueba funciona solo con la app conectada'); return; }
-  ui.iaTest={running:true,res:[]}; render();
-  for(const [t,exp] of iaTests()){
+A.iaTestRun=async(d)=>{ if(!CLOUD||!sb){ toast('La prueba funciona solo con la app conectada'); return; }
+  const T=iatLoad(); if(T.running) return;
+  if(d&&d.v==='nueva') T.res=[];
+  T.running=true; T.error=null; iatSave(); render();
+  const L=iaTests();
+  for(let i=T.res.length;i<L.length;i++){ const [t,exp]=L[i];
     let out={}, u=null;
-    try{ const {data,error}=await sb.functions.invoke('pasno-ia',{body:{texto:t,hoy:today()}}); if(error){ let m='error'; try{ m=(await error.context.json()).error; }catch(e){} out={error:m}; } else { out=data; u=data.usage; } }catch(e){ out={error:'sin conexión'}; }
-    const errs=out.error?[out.error]:iaGrade(exp,out); ui.iaTest.res.push({t,out,errs,u}); if(tab==='iatest') render();
+    try{ const {data,error}=await sb.functions.invoke('pasno-ia',{body:{texto:t,hoy:today(),prueba:true}}); if(error){ let m='error'; try{ m=(await error.context.json()).error; }catch(e){} out={error:m}; } else { out=data; u=data.usage; } }catch(e){ out={error:'sin conexión'}; }
+    // si falla la conexión o el límite, se detiene sin contar esa frase, para retomarla después
+    if(out.error){ T.error=out.error; break; }
+    T.res.push({t,out,errs:iaGrade(exp,out),u}); iatSave(); if(tab==='iatest') render();
   }
-  ui.iaTest.running=false; if(tab==='iatest') render(); };
+  T.running=false; if(tab==='iatest') render(); };
 const _vAjustes2=vAjustes;
 vAjustes=function(){ return _vAjustes2().replace('<button class="btn ghost" data-a="install">',`${CLOUD&&(S.iaTest||[]).length?'<button class="btn ghost" data-a="iaTestOpen">✨ Probar la IA con '+S.iaTest.length+' frases</button>':''}<button class="btn ghost" data-a="install">`); };
 SCREENS.ajustes=vAjustes;
