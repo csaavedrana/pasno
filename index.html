@@ -1446,13 +1446,15 @@ function vIA(){
   ${!V('iat')&&!r.acciones?`<div class="chips" style="margin-top:10px">${IA_EJEMPLOS.map(e=>`<div class="seg"><button data-a="iaEj" data-v="${esc(e)}">${esc(e)}</button></div>`).join('')}</div>`:''}
   ${r.error?`<div class="warnbox" style="margin-top:12px">${esc(r.error)}</div>`:''}
   ${(r.preguntas||[]).length?`<div class="warnbox" style="margin-top:12px">${r.preguntas.map(esc).join('<br>')}<br><span class="s">Corrige el texto y vuelve a interpretar, o ajústalo en el formulario.</span></div>`:''}
-  ${(r.acciones||[]).length?`<h3>Te propongo anotar</h3><div class="list">${r.acciones.map((a,i)=>`<div class="row"><div class="main"><div class="t" style="white-space:normal">${esc(a.resumen)}</div><div class="s">${{venta:'Venta',pago:'Pago',gasto:'Gasto',movimiento:'Movimiento'}[a.tipo]}${a._aviso?' · <span class="chip w">'+esc(a._aviso)+'</span>':''}</div></div>${a._hecho?'<span class="chip ok">✓ anotado</span>':`<button class="btn sm" data-a="iaAbrir" data-i="${i}">Revisar</button>`}</div>${iaOpciones(a,i)}`).join('')}</div>
+  ${(r.acciones||[]).length?`<h3>Te propongo anotar</h3><div class="list">${r.acciones.map((a,i)=>`<div class="row"><div class="main"><div class="t" style="white-space:normal">${esc(a.resumen)}</div><div class="s">${{venta:'Venta',pago:'Pago',gasto:'Gasto',movimiento:'Movimiento'}[a.tipo]}${a._aviso?' · <span class="chip w">'+esc(a._aviso)+'</span>':''}</div></div>${a._hecho?'<span class="chip ok">✓ anotado</span>':iaFalta(a)?'<span class="s">Elige abajo ↓</span>':`<button class="btn sm" data-a="iaAbrir" data-i="${i}">Revisar</button>`}</div>${iaOpciones(a,i)}`).join('')}</div>
     <p class="note">Cada una abre el formulario de siempre con los datos listos. Revisa y toca Guardar.</p>`:''}`;
 }
 SCREENS.f_ia=vIA;
 // "¿cuál cliente?": la IA manda las opciones y se elige con un toque (y lo aprende)
-function iaOpciones(a,i){ const op=a.cliente_opciones||[]; if(a._hecho||!op.length) return '';
-  return `<div class="chips" style="padding:0 0 10px">${op.map(id=>{ const k=S.clientes.find(x=>x.id===id); return `<div class="seg"><button data-a="iaCli" data-i="${i}" data-v="${id}" ${pressed(a.cliente_id===id)}>${esc(k.nombre)}</button></div>`; }).join('')}</div>`; }
+const iaFalta=a=>(a.cliente_opciones||[]).length&&!a.cliente_id&&!a._otra;
+function iaOpciones(a,i){ const op=a.cliente_opciones||[]; if(a._hecho||!op.length||a._otra) return '';
+  return `<div class="chips" style="padding:0 0 10px">${op.map(id=>{ const k=S.clientes.find(x=>x.id===id); return `<div class="seg"><button data-a="iaCli" data-i="${i}" data-v="${id}" ${pressed(a.cliente_id===id)}>${esc(k.nombre)}</button></div>`; }).join('')}<div class="seg"><button data-a="iaOtra" data-i="${i}">Otra persona</button></div></div>`; }
+A.iaOtra=d=>{ const a=ui.ia.acciones[+d.i]; a._otra=true; a.cliente_id=null; A.iaAbrir({i:d.i}); };
 A.iaCli=d=>{ const a=ui.ia.acciones[+d.i]; a.cliente_id=d.v; a._elegido=true; if(a._aviso==='¿cuál cliente?'||a._aviso==='elige quién pagó') a._aviso=null; render(); };
 const _vAddSheet2=vAddSheet;
 vAddSheet=function(){ return _vAddSheet2().replace('<button class="addrow" data-a="flow" data-f="f_vender">',
@@ -1617,6 +1619,12 @@ A.iaTestRun=async(d)=>{ if(!CLOUD||!sb){ toast('La prueba funciona solo con la a
   T.running=false; if(tab==='iatest') render(); };
 const _vAjustes2=vAjustes;
 vAjustes=function(){ const nm=S.iaMem?S.iaMem.alias.length+S.iaMem.notas.length:0; return _vAjustes2().replace('<button class="btn ghost" data-a="install">',`${CLOUD?'<button class="btn ghost" data-a="iaMemOpen">✨ Lo que aprendió la IA'+(nm?' ('+nm+')':'')+'</button>':''}${CLOUD&&(S.iaTest||[]).length?'<button class="btn ghost" data-a="iaTestOpen">✨ Probar la IA con '+S.iaTest.length+' frases</button>':''}<button class="btn ghost" data-a="install">`); };
+SCREENS.ajustes=vAjustes;
+
+// versión visible al final de Ajustes, para saber si el teléfono ya tiene la última
+const APP_VER='14-10 23:39';
+const _vAjustes3=vAjustes;
+vAjustes=function(){ return _vAjustes3()+`<p class="note" style="text-align:center;margin-top:18px">Versión ${APP_VER}</p>`; };
 SCREENS.ajustes=vAjustes;
 
 /* ---------- events ---------- */
