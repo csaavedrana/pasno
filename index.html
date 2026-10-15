@@ -877,6 +877,7 @@ function render(top){
     else if(s.t==='llegada'){ const c=S.compras.find(x=>x.id===s.id); inner=c?vLlegadaSheet(c):''; }
     else if(s.t==='hist') inner=vHistSheet(s.k,s.i);
     else if(s.t==='share') inner=vShareSheet(s);
+    else if(s.t==='pw') inner=(typeof vPwSheet==='function')?vPwSheet(ui.pwErr):'';
     if(!inner){ ui.sheet=null; sh.hidden=true; sh.innerHTML=''; } else { sh.innerHTML=`<div class="panel" role="dialog" aria-modal="true">${inner}</div>`; sh.hidden=false; } }
   else { sh.hidden=true; sh.innerHTML=''; }
   if(top) window.scrollTo(0,0);
@@ -1155,7 +1156,7 @@ function vLogin(err){
   <form id="loginForm" style="margin-top:14px"><div class="field"><label for="le">Correo</label><input id="le" type="email" autocomplete="username" inputmode="email" required></div>
   <div class="field"><label for="lp">Clave</label><input id="lp" type="password" autocomplete="current-password" required></div>
   ${err?`<div class="warnbox">${esc(err)}</div>`:''}<button class="btn block" type="submit">Entrar</button></form>
-  <p class="note">¿Olvidaste la clave? Pídele a Camila que te ponga una nueva.</p>`);
+  <p class="note">La primera vez entra con la clave que te dio Camila y cámbiala en Ajustes → Cambiar mi clave. ¿La olvidaste? Pídele a Camila una nueva.</p>`);
   $('#loginForm').onsubmit=async e=>{ e.preventDefault(); const b=e.target.querySelector('button'); b.disabled=true; b.textContent='Entrando…';
     const {error}=await sb.auth.signInWithPassword({email:$('#le').value.trim().toLowerCase(),password:$('#lp').value});
     if(error){ vLogin(/invalid/i.test(error.message)?'Correo o clave incorrectos.':'No pude conectarme. Revisa la señal e intenta de nuevo.'); return; }
@@ -1196,7 +1197,7 @@ function boot(){
 /* ---------- Ajustes con cuenta y respaldo ---------- */
 function vAjustes(){
   return `${topbar('Ajustes',ui.prev)}<div style="display:grid;gap:14px">
-    ${CLOUD&&me?`<div class="card"><span class="lab">Conectado como</span><span class="t">${esc(me.nombre)} · ${esc(me.email)}</span><span class="s">${syncState==='ok'?'Todo guardado en línea':syncState==='offline'?'Sin conexión: los cambios se suben al volver la señal':'Guardando…'}${lastSync?' · última vez '+lastSync.toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit'}):''}</span><button class="btn ghost" data-a="logout">Cerrar sesión</button></div>`:'<div class="card"><span class="lab">Modo prueba</span><span class="s">Los datos se guardan solo en este teléfono.</span></div>'}
+    ${CLOUD&&me?`<div class="card"><span class="lab">Conectado como</span><span class="t">${esc(me.nombre)} · ${esc(me.email)}</span><span class="s">${syncState==='ok'?'Todo guardado en línea':syncState==='offline'?'Sin conexión: los cambios se suben al volver la señal':'Guardando…'}${lastSync?' · última vez '+lastSync.toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit'}):''}</span><div class="acts"><button class="btn ghost" data-a="pwOpen">Cambiar mi clave</button><button class="btn ghost" data-a="logout">Cerrar sesión</button></div></div>`:'<div class="card"><span class="lab">Modo prueba</span><span class="s">Los datos se guardan solo en este teléfono.</span></div>'}
     <button class="btn ghost" data-a="clientes" data-f="todos">Clientes</button>
     <div class="field"><label for="cfR">Presupuesto de regalos al mes</label><input id="cfR" data-k inputmode="numeric" value="${esc(V('cfR',S.cfg.regalosMes.toLocaleString('es-CL')))}"></div>
     <div class="field"><label for="cfA">Recordatorio antes de que venza</label><textarea id="cfA" data-k>${esc(V('cfA',S.cfg.tpl.antes))}</textarea></div>
@@ -1211,6 +1212,25 @@ function vAjustes(){
 }
 A.logout=()=>{ sb.auth.signOut().finally(()=>{ try{ localStorage.removeItem(KEY); }catch(e){} location.reload(); }); };
 A.backup=()=>{ const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob([JSON.stringify(S)],{type:'application/json'})); a.download=`pasno-respaldo-${today()}.json`; a.click(); toast('Respaldo descargado'); };
+
+/* ---------- cambiar mi clave ---------- */
+function vPwSheet(err){
+  return `<div class="grab"></div><h2 style="margin:0">Cambiar mi clave</h2>
+  <p class="note" style="margin:0">Elige una clave que solo tú sepas, de al menos 8 caracteres.</p>
+  <div class="field"><label for="pw1">Clave nueva</label><input id="pw1" type="password" autocomplete="new-password"></div>
+  <div class="field"><label for="pw2">Repite la clave nueva</label><input id="pw2" type="password" autocomplete="new-password"></div>
+  ${err?`<div class="warnbox">${esc(err)}</div>`:''}
+  <div class="acts"><button class="btn ghost" data-a="closeSheet">Cancelar</button><button class="btn" data-a="pwSave">Guardar clave</button></div>`;
+}
+A.pwOpen=()=>{ ui.sheet={t:'pw'}; ui.pwErr=null; render(); };
+A.pwSave=async()=>{ const a=$('#pw1').value, b=$('#pw2').value;
+  const fail=m=>{ ui.pwErr=m; render(); };
+  if(a.length<8) return fail('La clave debe tener al menos 8 caracteres.');
+  if(a!==b) return fail('Las dos claves no coinciden.');
+  const btn=document.querySelector('[data-a=pwSave]'); if(btn){ btn.disabled=true; btn.textContent='Guardando…'; }
+  const {error}=await sb.auth.updateUser({password:a});
+  if(error) return fail(/same|different/i.test(error.message)?'Esa ya es tu clave. Elige una distinta.':/weak|short|least/i.test(error.message)?'Esa clave es muy débil. Prueba una más larga.':'No pude cambiarla. Revisa la señal e intenta de nuevo.');
+  ui.sheet=null; render(); toast('Clave cambiada'); };
 
 /* ---------- events ---------- */
 document.addEventListener('click', e=>{
