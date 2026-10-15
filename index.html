@@ -1453,11 +1453,13 @@ SCREENS.f_ia=vIA;
 const _pagoPick=A.pagoPick;
 A.pagoPick=d=>{ const keep=ui.iaCur!=null?{pm:FORM.pm,pf:FORM.pf}:null; _pagoPick(d); if(keep){ for(const k in keep) if(keep[k]!=null) FORM[k]=keep[k]; render(); } };
 // "¿cuál cliente?": la IA manda las opciones y se elige con un toque (y lo aprende)
-const iaFalta=a=>(a.cliente_opciones||[]).length&&!a.cliente_id&&!a._otra;
+const iaFalta=a=>(a.cliente_opciones||[]).length&&!a.cliente_id&&!a._otra&&!a._esNuevo;
 function iaOpciones(a,i){ const op=a.cliente_opciones||[]; if(a._hecho||!op.length||a._otra) return '';
-  return `<div class="chips" style="padding:0 0 10px">${op.map(id=>{ const k=S.clientes.find(x=>x.id===id); return `<div class="seg"><button data-a="iaCli" data-i="${i}" data-v="${id}" ${pressed(a.cliente_id===id)}>${esc(k.nombre)}</button></div>`; }).join('')}<div class="seg"><button data-a="iaOtra" data-i="${i}">Otra persona</button></div></div>`; }
+  const nuevo=a.tipo==='venta'&&a.cliente_nuevo?`<div class="seg"><button data-a="iaNuevo" data-i="${i}" ${pressed(!!a._esNuevo)}>Nueva: ${esc(titleCase(a.cliente_nuevo))}</button></div>`:'';
+  return `<div class="chips" style="padding:0 0 10px">${op.map(id=>{ const k=S.clientes.find(x=>x.id===id); return `<div class="seg"><button data-a="iaCli" data-i="${i}" data-v="${id}" ${pressed(a.cliente_id===id)}>${esc(k.nombre)}</button></div>`; }).join('')}${nuevo}<div class="seg"><button data-a="iaOtra" data-i="${i}">Otra persona</button></div></div>`; }
 A.iaOtra=d=>{ const a=ui.ia.acciones[+d.i]; if(!a||a._hecho) return; a._otra=true; a.cliente_id=null; A.iaAbrir({i:d.i}); };
-A.iaCli=d=>{ const a=ui.ia.acciones[+d.i]; a.cliente_id=d.v; a._elegido=true; if(a._aviso==='¿cuál cliente?'||a._aviso==='elige quién pagó') a._aviso=null; render(); };
+A.iaNuevo=d=>{ const a=ui.ia.acciones[+d.i]; a.cliente_id=null; a._esNuevo=true; a._elegido=false; if(a._aviso==='¿cuál cliente?') a._aviso=null; render(); };
+A.iaCli=d=>{ const a=ui.ia.acciones[+d.i]; a.cliente_id=d.v; a._elegido=true; a._esNuevo=false; if(a._aviso==='¿cuál cliente?'||a._aviso==='elige quién pagó') a._aviso=null; render(); };
 const _vAddSheet2=vAddSheet;
 vAddSheet=function(){ return _vAddSheet2().replace('<button class="addrow" data-a="flow" data-f="f_vender">',
   `<button class="addrow" data-a="flow" data-f="f_ia"><span class="ic gr"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></span><span class="main"><span class="t" style="display:block">✨ Anotar hablando</span><span class="s">O escribiendo: "vendí un light blue a la tía ana en 3 cuotas"</span></span></button>
@@ -1470,6 +1472,7 @@ function iaCheck(a){
   if(a.cliente_id&&!S.clientes.some(k=>k.id===a.cliente_id)){ a.cliente_id=null; a._aviso='revisa el cliente'; }
   a.cliente_opciones=[...new Set(a.cliente_opciones||[])].filter(id=>S.clientes.some(k=>k.id===id)).slice(0,6);
   if(a.cliente_id) a.cliente_opciones=[];
+  if(a.tipo!=='venta'&&!a.cliente_opciones.length) a.cliente_nuevo=a.cliente_id?null:a.cliente_nuevo;
   a.productos=(a.productos||[]).filter(p=>{ const b=S.bottles.find(x=>x.id===p.ref); return b&&(b.estado==='Stock'||b.estado==='En camino'||b.estado==='Abierta'); });
   if(a.tipo==='venta'&&!a.productos.length) a._aviso='elige los perfumes';
   if(a.tipo==='pago'&&!a.cliente_id) a._aviso='elige quién pagó';
@@ -1498,8 +1501,8 @@ Object.assign(A,{
     render(); },
   iaAbrir(d){ const a=ui.ia.acciones[+d.i]; if(!a||a._hecho) return; ui.iaCur=+d.i;
     if(a.tipo==='venta'){ const pk={}; for(const p of a.productos){ const b=S.bottles.find(x=>x.id===p.ref); if(b.estado==='Abierta'){ const k=b.id+'|'+(p.tamano_ml===10?10:5); pk[k]=(pk[k]||0)+Math.max(1,p.cantidad); } else pk[b.id]=1; }
-      startFlow('f_vender',{picks:pk,step:Object.keys(pk).length?(a.cliente_id||a.cliente_nuevo?3:2):1});
-      if(a.cliente_id) ui.cliPick=a.cliente_id; else if(a.cliente_nuevo){ ui.newCli=true; FORM.ncn=titleCase(a.cliente_nuevo); }
+      startFlow('f_vender',{picks:pk,step:Object.keys(pk).length?(a.cliente_id?3:2):1});
+      if(a.cliente_id) ui.cliPick=a.cliente_id; else if(a.cliente_nuevo&&(a._esNuevo||!(a.cliente_opciones||[]).length)){ ui.newCli=true; FORM.ncn=titleCase(a.cliente_nuevo); }
       if(a.total) FORM.stot=a.total.toLocaleString('es-CL'); if(a.cuotas) ui.n=Math.max(1,a.cuotas); if(a.pie){ ui.pieOn=true; FORM.spie=String(a.pie); }
       if(a.fecha){ FORM.sf=a.fecha; ui.showFecha=true; } if(a.medio) ui.pMedio=a.medio;
       if(a.entrega) ui.entrega=a.entrega; if(a.envio_monto!=null){ ui.entrega='envio'; FORM.senv=String(a.envio_monto); } if(a.envio_paga) ui.envPaga=a.envio_paga;
@@ -1513,6 +1516,8 @@ Object.assign(A,{
 function iaDone(rec){ if(ui.iaCur==null||!ui.ia||!ui.ia.acciones) return; const a=ui.ia.acciones[ui.iaCur];
   try{ iaLearn(a,rec,ui.ia.texto||''); }catch(e){}
   a._hecho=true; ui.iaCur=null; if(!ui.ia.acciones.some(a=>!a._hecho)) ui.ia.done=true;
+  // si se toca "Deshacer", la propuesta vuelve a quedar pendiente
+  const ub=$('#undoBtn'), ia=ui.ia; if(ub&&ub.onclick){ const orig=ub.onclick; ub.onclick=()=>{ orig(); a._hecho=false; ia.done=false; if(tab==='f_ia') render(); }; }
   tab='f_ia'; if(!rec||rec.tipo!=='ventas') ui.sheet=null; render(true); }
 const IA_SAVES={saveSale:'ventas',paySave:'pagos',saveGasto:'gastos',saveMov:'movs'};
 for(const k in IA_SAVES){ const f=A[k], arr=IA_SAVES[k]; A[k]=function(...args){ const before=S[arr].length; const r=f.apply(this,args); if(S[arr].length>before) iaDone({tipo:arr,nuevos:S[arr].slice(before)}); return r; }; }
@@ -1624,7 +1629,7 @@ vAjustes=function(){ const nm=S.iaMem?S.iaMem.alias.length+S.iaMem.notas.length:
 SCREENS.ajustes=vAjustes;
 
 // versión visible al final de Ajustes, para saber si el teléfono ya tiene la última
-const APP_VER='14-10 23:48';
+const APP_VER='14-10 23:56';
 const _vAjustes3=vAjustes;
 vAjustes=function(){ return _vAjustes3()+`<p class="note" style="text-align:center;margin-top:18px">Versión ${APP_VER}</p>`; };
 SCREENS.ajustes=vAjustes;
