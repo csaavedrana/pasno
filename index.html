@@ -1440,9 +1440,9 @@ function vIA(){
   const r=ui.ia||{}, busy=r.estado==='pensando';
   const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
   return `<div class="topbar"><button class="back" data-a="iaClose" aria-label="Cerrar">✕</button><h2>Anotar hablando</h2></div>
-  <p class="note" style="margin-top:0">Cuéntalo como se lo dirías a alguien. Te muestro qué voy a anotar y tú confirmas.</p>
+  <p class="note" style="margin-top:0">Toca 🎙, cuéntalo como se lo dirías a alguien y toca Listo. Te muestro qué voy a anotar y tú confirmas.</p>
   <div class="field"><textarea id="iat" data-k placeholder="Ej: vendí un light blue a la tía ana en 3 cuotas y pagué 5 lucas de envío" style="min-height:110px;font-size:16px">${esc(V('iat'))}</textarea></div>
-  <div class="acts" style="margin-top:8px">${SR?`<button class="btn ghost" data-a="iaMic">${ui.iaMic?'■ Detener':'🎙 Hablar'}</button>`:'<span class="s" style="align-self:center">Para dictar, toca el micrófono del teclado.</span>'}<button class="btn" data-a="iaGo" ${busy?'disabled':''}>${busy?'Pensando…':'Interpretar'}</button></div>
+  <div class="acts" style="margin-top:8px">${SR?`<button class="btn ghost" data-a="iaMic">${ui.iaMic?'■ Listo':'🎙 Hablar'}</button>`:'<span class="s" style="align-self:center">Para dictar, toca el micrófono del teclado.</span>'}<button class="btn" data-a="iaGo" ${busy?'disabled':''}>${busy?'Pensando…':'Interpretar'}</button></div>
   ${!V('iat')&&!r.acciones?`<div class="chips" style="margin-top:10px">${IA_EJEMPLOS.map(e=>`<div class="seg"><button data-a="iaEj" data-v="${esc(e)}">${esc(e)}</button></div>`).join('')}</div>`:''}
   ${r.error?`<div class="warnbox" style="margin-top:12px">${esc(r.error)}</div>`:''}
   ${(r.preguntas||[]).length?`<div class="warnbox" style="margin-top:12px">${r.preguntas.map(esc).join('<br>')}<br><span class="s">Corrige el texto y vuelve a interpretar, o ajústalo en el formulario.</span></div>`:''}
@@ -1478,10 +1478,10 @@ Object.assign(A,{
   iaClose(){ if(ui.iaMic) ui.iaMic.stop(); if(ui.ia&&ui.ia.acciones&&ui.ia.acciones.every(a=>a._hecho)) ui.ia.done=true; tab=ui.iaFrom||'inicio'; render(true); },
   iaEj(d){ FORM.iat=d.v; render(); },
   iaMic(){ const SR=window.SpeechRecognition||window.webkitSpeechRecognition; if(!SR) return;
-    if(ui.iaMic){ ui.iaMic.stop(); return; }
+    if(ui.iaMic){ ui.iaMic._enviar=true; ui.iaMic.stop(); return; }
     const rec=new SR(); rec.lang='es-CL'; rec.interimResults=true; rec.continuous=true; const base=V('iat'); let fin='';
     rec.onresult=e=>{ let tmp=''; for(let i=e.resultIndex;i<e.results.length;i++){ const t=e.results[i][0].transcript; if(e.results[i].isFinal) fin+=t+' '; else tmp+=t; } FORM.iat=(base?base+' ':'')+fin+tmp; const el=$('#iat'); if(el) el.value=FORM.iat; };
-    rec.onend=()=>{ ui.iaMic=null; render(); }; rec.onerror=()=>{ ui.iaMic=null; render(); };
+    rec.onend=()=>{ const enviar=rec._enviar; ui.iaMic=null; if(enviar&&V('iat').trim()) A.iaGo(); else render(); }; rec.onerror=()=>{ ui.iaMic=null; render(); };
     ui.iaMic=rec; rec.start(); render(); },
   async iaGo(){ const texto=V('iat').trim(); if(!texto){ toast('Escribe o di qué quieres anotar'); return; }
     if(ui.iaMic) ui.iaMic.stop();
@@ -1622,7 +1622,7 @@ vAjustes=function(){ const nm=S.iaMem?S.iaMem.alias.length+S.iaMem.notas.length:
 SCREENS.ajustes=vAjustes;
 
 // versión visible al final de Ajustes, para saber si el teléfono ya tiene la última
-const APP_VER='14-10 23:39';
+const APP_VER='14-10 23:40';
 const _vAjustes3=vAjustes;
 vAjustes=function(){ return _vAjustes3()+`<p class="note" style="text-align:center;margin-top:18px">Versión ${APP_VER}</p>`; };
 SCREENS.ajustes=vAjustes;
