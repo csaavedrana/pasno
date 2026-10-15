@@ -1481,7 +1481,7 @@ Object.assign(A,{
     ui.ia={estado:'pensando'}; render();
     try{ const {data,error}=await sb.functions.invoke('pasno-ia',{body:{texto,hoy:today()}});
       if(error){ let msg='No pude conectarme con la IA. Intenta de nuevo.'; try{ const b=await error.context.json(); if(b&&b.error) msg=b.error; }catch(e){} ui.ia={error:msg}; }
-      else ui.ia={acciones:(data.acciones||[]).map(iaCheck),preguntas:data.preguntas||[]};
+      else ui.ia={texto,log:data.log_id||null,acciones:(data.acciones||[]).map(iaCheck),preguntas:data.preguntas||[]};
     }catch(e){ ui.ia={error:'No pude conectarme con la IA. Intenta de nuevo.'}; }
     if(ui.ia.acciones&&!ui.ia.acciones.length&&!(ui.ia.preguntas||[]).length) ui.ia.error='No encontré nada para anotar. Prueba contándolo de otra forma.';
     render(); },
@@ -1498,10 +1498,59 @@ Object.assign(A,{
     else if(a.tipo==='movimiento'){ startFlow('f_mov'); if(a.mov_tipo) ui.movT=a.mov_tipo; if(a.monto) FORM.rm=String(a.monto); if(a.detalle) FORM.rd=a.detalle; render(true); }
     ui.flowFrom='f_ia'; },
 });
-// al guardar una propuesta: marcarla y volver a la lista si quedan otras
-function iaDone(){ if(ui.iaCur==null||!ui.ia||!ui.ia.acciones) return; ui.ia.acciones[ui.iaCur]._hecho=true; ui.iaCur=null;
+// al guardar una propuesta: aprender de lo que se corrigió, marcarla y volver a la lista si quedan otras
+function iaDone(rec){ if(ui.iaCur==null||!ui.ia||!ui.ia.acciones) return; const a=ui.ia.acciones[ui.iaCur];
+  try{ iaLearn(a,rec,ui.ia.texto||''); }catch(e){}
+  a._hecho=true; ui.iaCur=null;
   if(ui.ia.acciones.some(a=>!a._hecho)){ tab='f_ia'; ui.sheet=null; render(true); } else { ui.ia.done=true; } }
-for(const k of ['saveSale','paySave','saveGasto','saveMov']){ const f=A[k]; A[k]=function(...args){ const before=S.ventas.length+S.pagos.length+S.gastos.length+S.movs.length; const r=f.apply(this,args); if(S.ventas.length+S.pagos.length+S.gastos.length+S.movs.length>before) iaDone(); return r; }; }
+const IA_SAVES={saveSale:'ventas',paySave:'pagos',saveGasto:'gastos',saveMov:'movs'};
+for(const k in IA_SAVES){ const f=A[k], arr=IA_SAVES[k]; A[k]=function(...args){ const before=S[arr].length; const r=f.apply(this,args); if(S[arr].length>before) iaDone({tipo:arr,nuevos:S[arr].slice(before)}); return r; }; }
+
+/* ---------- La IA aprende de las correcciones ----------
+   Si la propuesta decía una cosa y se guardó otra (otro cliente, otro perfume, otra categoría, otro monto),
+   se anota aquí. La próxima vez la función se lo muestra a la IA. Se comparte entre Mati, Wanda y Camila. */
+const iaMem=()=>S.iaMem||(S.iaMem={alias:[],notas:[]});
+const sinArticulo=s=>norm(s).replace(/^(a |al |de |del )?(la |el |los |las |mi |don |dona )?/,'').trim();
+function iaLearn(a,rec,texto){
+  if(!rec||!rec.nuevos.length) return;
+  const M=iaMem(), r=rec.nuevos[0], f=today(), cit=texto.length>120?texto.slice(0,117)+'…':texto, notas=[];
+  // ¿a quién se le anotó de verdad?
+  let cli=null;
+  if(rec.tipo==='ventas') cli=r.cliente;
+  if(rec.tipo==='pagos'){ const c=S.cuotas.find(x=>x.id===r.cuota), v=c&&S.ventas.find(x=>x.id===c.venta); cli=v?v.cliente:null; }
+  if(cli&&a.cliente_dicho&&cli!==a.cliente_id){ const d=sinArticulo(a.cliente_dicho);
+    if(d){ M.alias=M.alias.filter(x=>x.d!==d); M.alias.push({d,id:cli,f}); if(M.alias.length>150) M.alias.shift(); } }
+  if(rec.tipo==='ventas'){
+    const prop=(a.productos||[]).map(p=>{ const b=S.bottles.find(x=>x.id===p.ref); return b?b.name:null; }).filter(Boolean).sort();
+    const real=[...new Set(r.items.filter(i=>i.t!=='x').map(i=>i.nombre))].sort();
+    if(prop.length&&[...new Set(prop)].join('|')!==real.join('|')) notas.push(`En "${cit}" el perfume era ${real.join(', ')}, no ${[...new Set(prop)].join(', ')}.`);
+    const tot=r.total-r.items.filter(i=>i.t==='x').reduce((s,i)=>s+i.precio,0);
+    if(a.total&&a.total!==tot) notas.push(`En "${cit}" el total era ${tot}, no ${a.total}.`);
+  }
+  if(rec.tipo==='pagos'){ const m=rec.nuevos.reduce((s,x)=>s+x.monto,0); if(a.monto&&a.monto!==m) notas.push(`En "${cit}" el monto era ${m}, no ${a.monto}.`); }
+  if(rec.tipo==='gastos'){ if(a.gasto_categoria&&a.gasto_categoria!==r.cat) notas.push(`En "${cit}" el gasto era de categoría ${r.cat}, no ${a.gasto_categoria}.`);
+    if(a.monto&&a.monto!==r.monto) notas.push(`En "${cit}" el monto era ${r.monto}, no ${a.monto}.`); }
+  if(rec.tipo==='movs'){ if(a.mov_tipo&&a.mov_tipo!==r.tipo) notas.push(`En "${cit}" el movimiento era ${r.tipo}, no ${a.mov_tipo}.`);
+    if(a.monto&&a.monto!==r.monto) notas.push(`En "${cit}" el monto era ${r.monto}, no ${a.monto}.`); }
+  // historial: lo que se dijo, lo que propuso la IA (queda en el registro de la función) y lo que se guardó de verdad
+  const H=S.iaHist||(S.iaHist=[]), fin={tipo:rec.tipo};
+  if(rec.tipo==='ventas'){ Object.assign(fin,{cliente:r.cliente,productos:r.items.filter(i=>i.t!=='x').map(i=>i.t==='d'?i.ref+'|'+i.size:i.ref),total:r.total,cuotas:S.cuotas.filter(c=>c.venta===r.id&&c.n>0).length,pie:r.pie||0,entrega:r.entrega||null}); }
+  else if(rec.tipo==='pagos') Object.assign(fin,{cliente:cli,monto:rec.nuevos.reduce((s,x)=>s+x.monto,0),medio:r.medio||null});
+  else if(rec.tipo==='gastos') Object.assign(fin,{cat:r.cat,monto:r.monto});
+  else Object.assign(fin,{mov:r.tipo,monto:r.monto});
+  H.push({log:ui.ia&&ui.ia.log,f,texto:cit,n:ui.iaCur,fin}); if(H.length>500) H.splice(0,H.length-500);
+  for(const txt of notas){ M.notas.push({txt,f}); } if(M.notas.length>40) M.notas.splice(0,M.notas.length-40);
+  save();
+}
+function vIAMem(){ const M=iaMem(), nom=id=>{ const k=S.clientes.find(x=>x.id===id); return k?k.nombre:'(cliente borrado)'; };
+  return `<div class="topbar"><button class="back" data-a="go" data-to="ajustes" aria-label="Volver">←</button><h2>Lo que aprendió la IA</h2></div>
+  <p class="note" style="margin-top:0">Cuando corriges una propuesta antes de guardar, la IA lo recuerda para la próxima. Si algo quedó mal, bórralo.</p>
+  <h3>Nombres</h3><div class="list">${M.alias.map((x,i)=>`<div class="row"><div class="main"><div class="t">"${esc(x.d)}" → ${esc(nom(x.id))}</div><div class="s">${fmtDate(x.f)}</div></div><button class="btn sm ghost" data-a="iaMemDel" data-k="alias" data-i="${i}" aria-label="Borrar">✕</button></div>`).join('')||'<div class="empty">Todavía nada.</div>'}</div>
+  <h3>Correcciones</h3><div class="list">${M.notas.map((x,i)=>`<div class="row"><div class="main"><div class="t" style="white-space:normal">${esc(x.txt)}</div><div class="s">${fmtDate(x.f)}</div></div><button class="btn sm ghost" data-a="iaMemDel" data-k="notas" data-i="${i}" aria-label="Borrar">✕</button></div>`).join('')||'<div class="empty">Todavía nada.</div>'}</div>`;
+}
+SCREENS.iamem=vIAMem;
+A.iaMemOpen=()=>{ goTo('iamem'); };
+A.iaMemDel=d=>{ const M=iaMem(), x=M[d.k][+d.i]; if(!x) return; commit('Borrado', ()=>{ M[d.k].splice(+d.i,1); }); };
 
 /* ---------- Prueba de la IA: 30 frases a la manera de Mati ---------- */
 // las frases de prueba usan nombres reales de clientes: viven en los datos privados (S.iaTest), no en este código público
@@ -1523,39 +1572,44 @@ function iaGrade(exp,res){
 }
 // el avance se guarda en este teléfono: si se cierra la pantalla, la prueba sigue donde quedó
 const IAT_KEY='pasno-iatest';
-function iatLoad(){ if(ui.iaTest) return ui.iaTest; try{ const r=JSON.parse(localStorage.getItem(IAT_KEY)||'null'); if(r&&Array.isArray(r.res)) return ui.iaTest={running:false,res:r.res}; }catch(e){} return ui.iaTest={running:false,res:[]}; }
-function iatSave(){ try{ localStorage.setItem(IAT_KEY,JSON.stringify({res:ui.iaTest.res})); }catch(e){} }
+// precio por millón de tokens (entrada, salida) en USD
+const IA_MODELOS={'claude-opus-5-5':['Opus 5.5',4,20],'claude-sonnet-5-5':['Sonnet 5.5',2,10],'claude-haiku-5-5':['Haiku 5.5',0.1,0.5]};
+function iatLoad(){ if(ui.iaTest) return ui.iaTest; try{ const r=JSON.parse(localStorage.getItem(IAT_KEY)||'null'); if(r&&Array.isArray(r.res)) return ui.iaTest={running:false,res:r.res,modelo:r.modelo||'claude-opus-5-5'}; }catch(e){} return ui.iaTest={running:false,res:[],modelo:'claude-opus-5-5'}; }
+function iatSave(){ try{ localStorage.setItem(IAT_KEY,JSON.stringify({res:ui.iaTest.res,modelo:ui.iaTest.modelo})); }catch(e){} }
 function vIATest(){
   const T=iatLoad(), N=iaTests().length;
   const done=T.res.length, ok=T.res.filter(r=>!r.errs.length).length, tin=T.res.reduce((a,r)=>a+(r.u?r.u.input_tokens:0),0), tout=T.res.reduce((a,r)=>a+(r.u?r.u.output_tokens:0),0);
-  const usd=tin/1e6*4+tout/1e6*20;
+  const [mNom,pin,pout]=IA_MODELOS[T.modelo]||IA_MODELOS['claude-opus-5-5'], usd=tin/1e6*pin+tout/1e6*pout;
+  const elegir=T.running?'':`<div class="field"><span class="lab">Modelo para ${done&&done<N?'empezar de nuevo':'la prueba'}</span>${segBtns('iaTestModelo',Object.entries(IA_MODELOS).map(([k,v])=>[k,v[0]]),ui.iaTestM||T.modelo)}</div>`;
   const btns=T.running?'':!done?`<button class="btn block" data-a="iaTestRun">Empezar la prueba</button>`
-    :`<div class="acts">${done<N?`<button class="btn" data-a="iaTestRun">Continuar (${done} de ${N})</button>`:''}<button class="btn ghost" data-a="iaTestRun" data-v="nueva">Empezar de nuevo</button></div>`;
+    :`<div class="acts">${done<N&&(ui.iaTestM||T.modelo)===T.modelo?`<button class="btn" data-a="iaTestRun">Continuar (${done} de ${N})</button>`:''}<button class="btn ghost" data-a="iaTestRun" data-v="nueva">Empezar de nuevo</button></div>`;
   return `<div class="topbar"><button class="back" data-a="go" data-to="ajustes" aria-label="Volver">←</button><h2>Probar la IA</h2></div>
-  <p class="note" style="margin-top:0">Manda ${N} frases escritas como las diría Mati y revisa si la IA propone lo correcto. No guarda nada. Usa la IA ${N} veces (aprox. USD 0,50–1 con Claude Opus 5.5) y no cuenta para el límite diario de uso normal.</p>
+  <p class="note" style="margin-top:0">Manda ${N} frases escritas como las diría Mati y revisa si la IA propone lo correcto. No guarda nada. Usa la IA ${N} veces (aprox. USD 0,50 con Opus, 0,25 con Sonnet, menos de 0,02 con Haiku) y no cuenta para el límite diario de uso normal.</p>
+  ${elegir}
   ${T.error?`<div class="warnbox" style="margin-top:12px">Se detuvo: ${esc(T.error)}</div>`:''}
   ${btns}
-  ${done?`<div class="card" style="margin-top:12px"><span class="lab">Resultado${T.running?' (en curso)':done<N?' (a medias)':''}</span><span style="font-size:22px;font-weight:700">${ok} de ${done} correctas</span><span class="s">${tin.toLocaleString('es-CL')} tokens de entrada · ${tout.toLocaleString('es-CL')} de salida · costo aprox. USD ${usd.toFixed(3)}</span></div>
+  ${done?`<div class="card" style="margin-top:12px"><span class="lab">${mNom} · Resultado${T.running?' (en curso)':done<N?' (a medias)':''}</span><span style="font-size:22px;font-weight:700">${ok} de ${done} correctas</span><span class="s">${tin.toLocaleString('es-CL')} tokens de entrada · ${tout.toLocaleString('es-CL')} de salida · costo aprox. USD ${usd.toFixed(3)}</span></div>
   <div class="list" style="margin-top:12px">${T.res.map(r=>`<div class="row"><div class="main"><div class="t" style="white-space:normal">${r.errs.length?'✗':'✓'} ${esc(r.t)}</div><div class="s" style="white-space:normal">${r.errs.length?esc(r.errs.join(' · ')):esc((r.out.acciones||[]).map(a=>a.resumen).join(' / ')||(r.out.preguntas||[]).join(' ')||'sin registros')}</div></div></div>`).join('')}</div>`:''}
   ${T.running?'<p class="note">Probando… si cierras la pantalla, al volver puedes continuar donde quedó.</p>':''}`;
 }
 SCREENS.iatest=vIATest;
 A.iaTestOpen=()=>{ goTo('iatest'); };
+A.iaTestModelo=d=>{ ui.iaTestM=d.v; render(); };
 A.iaTestRun=async(d)=>{ if(!CLOUD||!sb){ toast('La prueba funciona solo con la app conectada'); return; }
   const T=iatLoad(); if(T.running) return;
-  if(d&&d.v==='nueva') T.res=[];
+  const m=ui.iaTestM||T.modelo; if(d&&d.v==='nueva'||m!==T.modelo){ T.res=[]; T.modelo=m; }
   T.running=true; T.error=null; iatSave(); render();
   const L=iaTests();
   for(let i=T.res.length;i<L.length;i++){ const [t,exp]=L[i];
     let out={}, u=null;
-    try{ const {data,error}=await sb.functions.invoke('pasno-ia',{body:{texto:t,hoy:today(),prueba:true}}); if(error){ let m='error'; try{ m=(await error.context.json()).error; }catch(e){} out={error:m}; } else { out=data; u=data.usage; } }catch(e){ out={error:'sin conexión'}; }
+    try{ const {data,error}=await sb.functions.invoke('pasno-ia',{body:{texto:t,hoy:today(),prueba:true,modelo:T.modelo}}); if(error){ let m='error'; try{ m=(await error.context.json()).error; }catch(e){} out={error:m}; } else { out=data; u=data.usage; } }catch(e){ out={error:'sin conexión'}; }
     // si falla la conexión o el límite, se detiene sin contar esa frase, para retomarla después
     if(out.error){ T.error=out.error; break; }
     T.res.push({t,out,errs:iaGrade(exp,out),u}); iatSave(); if(tab==='iatest') render();
   }
   T.running=false; if(tab==='iatest') render(); };
 const _vAjustes2=vAjustes;
-vAjustes=function(){ return _vAjustes2().replace('<button class="btn ghost" data-a="install">',`${CLOUD&&(S.iaTest||[]).length?'<button class="btn ghost" data-a="iaTestOpen">✨ Probar la IA con '+S.iaTest.length+' frases</button>':''}<button class="btn ghost" data-a="install">`); };
+vAjustes=function(){ const nm=S.iaMem?S.iaMem.alias.length+S.iaMem.notas.length:0; return _vAjustes2().replace('<button class="btn ghost" data-a="install">',`${CLOUD?'<button class="btn ghost" data-a="iaMemOpen">✨ Lo que aprendió la IA'+(nm?' ('+nm+')':'')+'</button>':''}${CLOUD&&(S.iaTest||[]).length?'<button class="btn ghost" data-a="iaTestOpen">✨ Probar la IA con '+S.iaTest.length+' frases</button>':''}<button class="btn ghost" data-a="install">`); };
 SCREENS.ajustes=vAjustes;
 
 /* ---------- events ---------- */
