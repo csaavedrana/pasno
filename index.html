@@ -198,6 +198,29 @@ nav.tabs .badge{position:absolute;top:0;left:calc(50% + 6px);background:var(--wa
 .apply .r{display:flex;justify-content:space-between;gap:8px}
 :root{--c-cash:var(--good);--c-owed:var(--amber);--c-stock:var(--plum)}
 .topbar h2,.sheet h2{min-width:0;overflow-wrap:anywhere}
+
+/* control de 3 secciones (Stock): siempre cabe en el ancho del teléfono */
+.seg3{display:grid;grid-template-columns:repeat(3,1fr);gap:4px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:4px}
+.seg3 button{border:0;background:none;color:var(--ink);border-radius:10px;padding:8px 4px;font-weight:600;font-size:14px;line-height:1.15;min-height:44px;display:grid;align-content:center;justify-items:center;gap:2px;min-width:0;overflow-wrap:anywhere}
+.seg3 button small{font-size:11px;font-weight:500;color:var(--muted)}
+.seg3 button[aria-pressed="true"]{background:var(--plum);color:var(--bg)}
+.seg3 button[aria-pressed="true"] small{color:inherit;opacity:.85}
+/* barra de abajo: todos los íconos y textos alineados; "Anotar" destaca por el color, no por estar más arriba */
+nav.tabs .in{align-items:stretch}
+nav.tabs button{grid-template-rows:32px auto;align-content:start;gap:3px;padding:2px 0}
+nav.tabs button svg{align-self:center}
+nav.tabs .sell{background:none;transform:none;box-shadow:none;margin:0;padding:2px 0;color:var(--amber)}
+nav.tabs .sell svg{background:var(--amber);color:#fff;border-radius:11px;width:44px;height:32px;padding:5px 10px;box-sizing:border-box}
+nav.tabs .sell[aria-current="page"]{color:var(--amber)}
+
+/* encabezado: en pantallas angostas se esconde "Perfumería" para que no se salgan los botones */
+header.top{gap:8px}
+header.top .brand{white-space:nowrap;min-width:0}
+header.top .topicons{flex-shrink:0;display:flex;gap:8px;align-items:center}
+@media (max-width:400px){ .brand small{display:none} }
+
+/* las etiquetas largas bajan de línea en vez de salirse */
+.chip{white-space:normal;max-width:100%;overflow-wrap:anywhere}
 </style></head><body>
 
 <div class="wrap">
@@ -260,7 +283,7 @@ const uid = p => p + Date.now().toString(36) + Math.random().toString(36).slice(
 const pad = n => String(n).padStart(3,'0');
 const normTel = v => { let d=String(v||'').replace(/\D/g,''); if(d.length===9&&d[0]==='9') d='56'+d; else if(d.length===8) d='569'+d; return d; };
 const fmtTel = t => t && t.length===11 ? `+${t.slice(0,2)} ${t[2]} ${t.slice(3,7)} ${t.slice(7)}` : (t?'+'+t:'');
-const saludo = n => { const w=String(n).split(' '); return /^(t[ií]a|t[ií]o|profe|miss|se[nñ]ora|sra|pap[aá]|mam[aá])$/i.test(w[0]) && w[1] ? w[0]+' '+w[1] : w[0]; };
+const saludo = n => { if(/^sin nombre/i.test(String(n))) return String(n); const w=String(n).split(' '); return /^(t[ií]a|t[ií]o|profe|miss|se[nñ]ora|sra|pap[aá]|mam[aá])$/i.test(w[0]) && w[1] ? w[0]+' '+w[1] : w[0]; };
 const fill = (t,o) => t.replace(/\{(\w+)\}/g,(m,k)=> o[k] ?? m);
 const isStandalone = () => window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
 
@@ -317,10 +340,12 @@ function calc(){
   const K=S.saldos[S.saldos.length-1]||null, caja=K?(K.banco||0)+(K.ahorro||0)+(K.efectivo||0):0;
   const consigItems=(S.consignas||[]).flatMap(g=>g.items.filter(i=>i.estado==='fuera')), consigVal=consigItems.reduce((a,i)=>a+i.costo,0), consigPrecio=consigItems.reduce((a,i)=>a+i.precio,0);
   const stock=stockB+camino+abiertasVal+consigVal;
-  const segunPlata = caja + stock + revisar + porCobrar + porConf - deuda - favor - aportes + retiros;
+  // ajuste de inicio: diferencia del Excel que nadie supo explicar, anotada una sola vez para partir cuadrados
+  const ajusteIni=S.movs.filter(x=>x.tipo==='Ajuste de inicio').reduce((a,x)=>a+x.monto,0);
+  const segunPlata = caja + stock + revisar + porCobrar + porConf - deuda - favor - aportes + retiros + ajusteIni;
   return {consigVal,consigPrecio,nConsig:consigItems.length,porCobrar,vencido,porConf,incobrable,ventas,costo,bruta,neta,netaMes,margen:ventas?bruta/ventas:0,ventasMes,ganMes,gastosMes,stockB,camino,revisar,abiertasVal,stock,
     nStock:cntB('Stock'),nCamino:cntB('En camino'),nRevisar:cntB('Revisar'),nAbiertas:abiertas.length,nPorEntregar:S.bottles.filter(b=>b.porEntregar).length,
-    regalos,perdidas,regalosMes,gastos,deuda,proxDeuda:pend[0]||null,aportes,retiros,cobradoMes,favor,K,caja,segunPlata};
+    regalos,perdidas,regalosMes,gastos,deuda,ajusteIni,proxDeuda:pend[0]||null,aportes,retiros,cobradoMes,favor,K,caja,segunPlata};
 }
 /* ---------- ui state ---------- */
 let tab='inicio';
@@ -656,6 +681,7 @@ function vPedidos(k){
 /* ---------- Plata ---------- */
 function cuadreLines(k){ const line=(l,v,sign='')=>`<div class="r"><span>${l}</span><b>${sign}${clp(Math.abs(v))}</b></div>`;
   return `${line('Cuenta, ahorro y caja de efectivo',k.caja,'+ ')}${line('Stock al costo',k.stock,'+ ')}${k.revisar?line('Botellas por revisar',k.revisar,'+ '):''}${line('Te deben',k.porCobrar+k.porConf,'+ ')}${line('Debes a proveedores',k.deuda,'− ')}${k.favor?line('Saldo a favor de clientes',k.favor,'− '):''}${line('Plata que pusiste',k.aportes,'− ')}${line('Lo que sacaste para ti',k.retiros,'+ ')}
+    ${k.ajusteIni?line('Ajuste de inicio (diferencia del Excel)',k.ajusteIni,k.ajusteIni>0?'+ ':'− '):''}
     <div class="r tot"><span>Ganancia según tu plata</span><span>${clp(k.segunPlata)}</span></div><div class="r"><span>Ganancia según lo anotado</span><b>${clp(k.neta)}</b></div>`; }
 const MOVTXT = {'Ahorro':'Pasé al ahorro','Retiro personal':'Saqué para mí','Aporte de capital':'Puse plata','Uso propio':'Me quedé un perfume','Devolución proveedor':'Me devolvió el proveedor','Devolución a cliente':'Le devolví a un cliente','Depósito efectivo':'Deposité efectivo en la cuenta'};
 function vHistorial(){
@@ -690,7 +716,7 @@ function vCliente(){
   ${perdido?`<p class="note">Deuda dada por perdida: ${clp(perdido)}. <button class="linkbtn" data-a="perdUndo" data-id="${k.id}">Me pagó igual: volver a cobrar</button></p>`:''}
   ${dups.length?`<h3>¿Es la misma persona?</h3><div class="list">${dups.slice(0,4).map(d=>`<div class="row"><div class="main"><div class="t">${esc(d.nombre)}</div><div class="s">${S.ventas.filter(v=>v.cliente===d.id).length} compras${d.tel?' · '+fmtTel(d.tel):''}</div></div>${ui.mergeWith===d.id?`<button class="btn sm" data-a="merge" data-id="${d.id}">Sí, unir</button><button class="btn sm ghost" data-a="mergeAsk" data-id="">No</button>`:`<button class="btn sm ghost" data-a="mergeAsk" data-id="${d.id}">Unir</button>`}</div>`).join('')}</div>${ui.mergeWith?`<p class="note">Las compras y cuotas de ${esc(S.clientes.find(c=>c.id===ui.mergeWith).nombre)} pasan a ${esc(k.nombre)}, y se borra el duplicado. Puedes deshacerlo.</p>`:''}`:''}
   ${ventas.length?`<h3>Compras</h3><div class="list">${ventas.map(v=>{ const cs=S.cuotas.filter(c=>c.venta===v.id), deb=cs.reduce((a,c)=>a+saldoC(c,paid),0), perd=cs.some(c=>c.perdida);
-    return `<button class="rowbtn" data-a="venta" data-id="${v.id}"><div class="main"><div class="t" style="white-space:normal">${esc(v.items.map(i=>i.nombre).join(', ')||'Venta sin detalle')}</div><div class="s">${v.id} · ${v.fecha?fmtDate(v.fecha):'sin fecha'} · vendió ${v.vendedor}${cs.filter(c=>c.n>0).length>1?' · '+cs.filter(c=>c.n>0).length+' cuotas':''}</div></div><div style="text-align:right"><div class="amt">${clp(v.total)}</div>${perd?'<span class="chip w">perdida</span>':deb?`<span class="chip n">debe ${clp(deb)}</span>`:'<span class="chip ok">pagado</span>'}</div></button>`; }).join('')}</div><p class="note">Toca una compra para editarla, cambiar el perfume o anularla.</p>`:''}`;
+    return `<button class="rowbtn" data-a="venta" data-id="${v.id}"><div class="main"><div class="t" style="white-space:normal">${esc(v.items.map(i=>i.nombre).join(', ')||'Venta sin detalle')}</div><div class="s">${v.id} · ${v.fecha?fmtDate(v.fecha):'sin fecha'} · vendió ${esc(v.vendedor)}${cs.filter(c=>c.n>0).length>1?' · '+cs.filter(c=>c.n>0).length+' cuotas':''}</div></div><div style="text-align:right"><div class="amt">${clp(v.total)}</div>${perd?'<span class="chip w">perdida</span>':deb?`<span class="chip n">debe ${clp(deb)}</span>`:'<span class="chip ok">pagado</span>'}</div></button>`; }).join('')}</div><p class="note">Toca una compra para editarla, cambiar el perfume o anularla.</p>`:''}`;
 }
 
 /* ---------- Vender ---------- */
@@ -773,6 +799,7 @@ function vCierre(){
   return head+`<h2 style="margin-top:4px">${ok?'¡Cuadra!':diff<0?`Faltan ${clp(-diff)}`:`Sobran ${clp(diff)}`}</h2>
   <div class="sched">${cuadreLines(sim)}</div>
   ${ok?'<div class="okbox" style="margin-top:10px">Todo lo que entró y salió está anotado.</div>':`<div class="warnbox" style="margin-top:10px">${diff<0?'Puede faltar anotar: compras (perfumes en camino), gastos (envíos, cajas, súper) o plata que sacaste para ti.':'Puede faltar anotar: ventas, o plata que pusiste.'}</div>`}
+  ${!ok&&!S.movs.some(m=>m.tipo==='Ajuste de inicio')?`<div class="card" style="margin-top:10px;gap:6px"><span class="lab">¿Recién partiendo con la app?</span><span class="s">Si ya revisaste y esta diferencia viene de antes (el Excel), puedes anotarla una sola vez como "ajuste de inicio" para partir cuadrados. Después, cada cierre te mostrará solo las diferencias nuevas.</span><button class="btn ghost" data-a="ajusteIni" data-v="${-diff}">Anotar ajuste de inicio de ${clp(Math.abs(diff))}</button></div>`:''}
   ${actionbar(`<button class="btn ghost" data-a="cStep" data-v="${steps-1}">Atrás</button><button class="btn" data-a="saveCierre">Guardar cierre</button>`)}`;
 }
 
@@ -849,7 +876,7 @@ function vVentaSheet(v){
     <button class="btn wa block" data-a="share" data-k="venta" data-id="${v.id}">Enviar resumen al cliente</button>
     <div class="acts"><button class="btn ghost" data-a="vAct" data-v="editar">Editar venta</button><button class="btn ghost" data-a="vAct" data-v="anular">Anular venta</button></div>
     <button class="btn ghost block" data-a="closeSheet">Cerrar</button>`;
-  return `<div class="grab"></div><div><h2 style="margin:0">${v.id} · ${esc(cliName(v.cliente))}</h2><p class="note" style="margin-top:4px">${v.fecha?fmtDay(v.fecha):'Sin fecha'} · vendió ${v.vendedor}</p></div>${a?`<span class="flab">${{editar:'Editar venta',anular:'¿Anular esta venta?',cambiar:'Cambiar perfume'}[a]}</span>`:''}${body}`;
+  return `<div class="grab"></div><div><h2 style="margin:0">${v.id} · ${esc(cliName(v.cliente))}</h2><p class="note" style="margin-top:4px">${v.fecha?fmtDay(v.fecha):'Sin fecha'} · vendió ${esc(v.vendedor)}</p></div>${a?`<span class="flab">${{editar:'Editar venta',anular:'¿Anular esta venta?',cambiar:'Cambiar perfume'}[a]}</span>`:''}${body}`;
 }
 function vLlegadaSheet(c){
   const bs=S.bottles.filter(b=>b.compra===c.id&&(b.estado==='En camino'||(b.porEntregar&&!b.llego)));
@@ -891,6 +918,7 @@ function render(top){
     else if(s.t==='consVend'||s.t==='consDev') inner=(typeof vConsSheet==='function')?vConsSheet(s):'';
     else if(s.t==='gastoQuick') inner=vGastoQuick(s);
     else if(s.t==='waTel') inner=(typeof vWaTel==='function')?vWaTel(s):'';
+    else if(s.t==='ajEdit') inner=(typeof vAjEdit==='function')?vAjEdit(s):'';
     else if(s.t==='consPremio') inner=(typeof vPremioSheet==='function')?vPremioSheet(s):'';
     if(!inner){ ui.sheet=null; sh.hidden=true; sh.innerHTML=''; } else { sh.innerHTML=`<div class="panel" role="dialog" aria-modal="true">${inner}</div>`; sh.hidden=false; } }
   else { sh.hidden=true; sh.innerHTML=''; }
@@ -965,13 +993,16 @@ const A = {
     commit(`Venta ${v.id} actualizada`, ()=>{ v.cliente=cli; v.fecha=fecha; v.vendedor=vend;
       if(T!==v.total){ const L=v.items.reduce((a,i)=>a+i.precio,0); let acc=0; v.items.forEach((it,i)=>{ it.precio=i===v.items.length-1?T-acc:(L?Math.round(it.precio*T/L):Math.round(T/v.items.length)); acc+=it.precio; }); v.total=T;
         const perd=cs.filter(c=>c.perdida).reduce((a,c)=>a+Math.max(0,c.monto-(paid.get(c.id)||0)),0), open=cs.filter(c=>!c.perdida&&saldoC(c,paid)>0).sort((a,b)=>a.n-b.n), resto=T-pagado-perd;
-        open.forEach(c=>{ c.monto=paid.get(c.id)||0; });
+        const conf=open.some(c=>c.conf); open.forEach(c=>{ c.monto=paid.get(c.id)||0; });
         const keep=open.filter(c=>c.monto>0), fresh=open.filter(c=>!c.monto); S.cuotas=S.cuotas.filter(c=>!fresh.includes(c));
         if(resto>0){ const n=Math.max(1,fresh.length), k=S.clientes.find(x=>x.id===cli), ds=fresh.length?fresh.map(c=>c.vence):schedule(today(),1,k.dia), ms=split(resto,n), last=Math.max(0,...S.cuotas.filter(c=>c.venta===v.id).map(c=>c.n));
-          ms.forEach((m,i)=>S.cuotas.push({id:uid('C'),venta:v.id,n:last+i+1,monto:m,vence:ds[i]||ds[ds.length-1]})); }
-        else if(resto<0){ const k=S.clientes.find(x=>x.id===cli); k.favor=(k.favor||0)-resto; } } }); },
+          ms.forEach((m,i)=>S.cuotas.push({id:uid('C'),venta:v.id,n:last+i+1,monto:m,vence:ds[i]||ds[ds.length-1],...(conf?{conf:true}:{})})); }
+        else if(resto<0){ // primero se achica lo que se había dado por perdido; solo lo que de verdad pagó de más queda a favor
+          let exceso=-resto; for(const c of cs.filter(c=>c.perdida)){ const s=Math.max(0,c.monto-(paid.get(c.id)||0)), r=Math.min(s,exceso); c.monto-=r; exceso-=r; if(!exceso) break; }
+          if(exceso>0){ const k=S.clientes.find(x=>x.id===cli); k.favor=(k.favor||0)+exceso; } } } }); },
   anular(d){ const v=S.ventas.find(x=>x.id===d.id), {paid}=idx(), cs=S.cuotas.filter(c=>c.venta===v.id), pagado=cs.reduce((a,c)=>a+(paid.get(c.id)||0),0), opt=V('an','devolvi'); ui.sheet=null;
     commit(`Venta ${v.id} anulada`, ()=>{ for(const it of v.items) if(it.t==='b'){ const b=S.bottles.find(x=>x.id===it.ref); if(b){ b.estado=b.porEntregar&&!b.llego?'En camino':'Stock'; b.venta=''; b.fSalida=null; b.porEntregar=false; delete b.llego; } } else if(it.t==='d'){ const b=S.bottles.find(x=>x.id===it.ref); if(b&&b.estado==='Agotada') b.dec.ajuste+=it.costo; }
+      else if(it.t==='x'&&it.costo>0) S.gastos.push({fecha:today(),cat:'Envío',det:`Envío de la venta ${v.id} (anulada)`,monto:it.costo});
       const ids=new Set(cs.map(c=>c.id)); S.pagos=S.pagos.filter(p=>!ids.has(p.cuota)); S.cuotas=S.cuotas.filter(c=>!ids.has(c.id)); S.ventas=S.ventas.filter(x=>x!==v);
       if(pagado){ const k=S.clientes.find(x=>x.id===v.cliente); if(opt==='favor') k.favor=(k.favor||0)+pagado; else S.movs.push({fecha:today(),tipo:'Devolución a cliente',monto:pagado,det:`${k.nombre} · ${v.id} anulada`}); } }); },
   // vender
@@ -1022,7 +1053,7 @@ const A = {
   llegaT(d,el){ ui.llegaSel[d.id]=el.checked; render(); },
   llegaSave(d){ const ids=Object.keys(ui.llegaSel).filter(id=>ui.llegaSel[id]), fl=V('lfl'); ui.sheet=null;
     commit(`${ids.length} perfume${ids.length>1?'s':''} llegaron`, ()=>{ for(const id of ids){ const b=S.bottles.find(x=>x.id===id); if(b.porEntregar){ /* vendido en preventa: sigue por entregar hasta que lo entregue */ b.llego=true; } else b.estado='Stock'; }
-      const c=S.compras.find(x=>x.id===d.id); if(!S.bottles.some(b=>b.compra===c.id&&b.estado==='En camino')) c.estado='Recibida';
+      const c=S.compras.find(x=>x.id===d.id); updCompra(c.id);
       if(fl!=='') { c.flete=num(fl); addGasto('Envío',num(fl),`Flete pedido ${provName(c.prov)}`,{compra:c.id}); } }); clearForm('lfl'); },
   bMark(d){ const b=S.bottles.find(x=>x.id===d.id), e=d.v, nota=V('bnn'); ui.sheet=null; clearForm('bnn');
     commit(e==='Stock'?`${b.name} vuelve a stock`:`${b.name}: ${e==='Uso propio'?'te lo quedaste':e.toLowerCase()}`, ()=>{ b.estado=e; b.fSalida=e==='Stock'?null:today(); b.nota=nota; if(e==='Uso propio') S.movs.push({fecha:today(),tipo:'Uso propio',monto:b.cost,det:b.name}); }); },
@@ -1042,13 +1073,14 @@ const A = {
   movT(d){ ui.movT=d.v; render(); },
   saveMov(){ const m=num(V('rm')); if(!m) return; const tipo=ui.movT, det=V('rd'); commit(`Guardado: ${clp(m)}`, ()=>S.movs.push({fecha:today(),tipo,monto:m,det})); endFlow(); },
   cStep(d){ ui.cStep=+d.v; render(true); },
+  ajusteIni(d){ const m=Math.round(+d.v); if(!m) return; commit('Ajuste de inicio anotado', ()=>S.movs.push({fecha:today(),tipo:'Ajuste de inicio',monto:m,det:m>0?'Plata que salió antes de usar la app y no quedó anotada (Excel)':'Plata que había de más al empezar la app (Excel)'})); },
   saveCierre(){ const b=num(V('kb')), a=num(V('ka')), e=num(V('ke')), c=S.cfg.capital==null?num(V('kc')):null; commit('Cierre de mes guardado', ()=>{ S.saldos.push({fecha:today(),banco:b,ahorro:a,efectivo:e}); if(c!=null) S.cfg.capital=c; }); ui.plataSeg='Resumen'; tab='plata'; render(true); },
   plataSeg(d){ ui.plataSeg=d.seg; render(); },
   histF(d){ ui.histF=d.v; render(); },
-  hist(d){ ui.sheet={t:'hist',k:d.k,i:+d.i}; clearForm('hm','hf','hd'); render(); },
-  histSave(d){ const arr=d.k==='g'?S.gastos:S.movs, it=arr[+d.i], m=num(V('hm',String(it.monto)))||it.monto, f=V('hf',it.fecha||'')||it.fecha, det=V('hd',it.det||''); ui.sheet=null;
+  hist(d){ ui.sheet={t:'hist',k:d.k,i:+d.i,sig:JSON.stringify((d.k==='g'?S.gastos:S.movs)[+d.i])}; clearForm('hm','hf','hd'); render(); },
+  histSave(d){ const arr=d.k==='g'?S.gastos:S.movs, sig=ui.sheet&&ui.sheet.sig, ix=sig?arr.findIndex(x=>JSON.stringify(x)===sig):+d.i; if(ix<0){ ui.sheet=null; toast('Ese registro cambió mientras lo mirabas. Ábrelo de nuevo.'); render(); return; } d={...d,i:ix}; const it=arr[+d.i], m=num(V('hm',String(it.monto)))||it.monto, f=V('hf',it.fecha||'')||it.fecha, det=V('hd',it.det||''); ui.sheet=null;
     commit('Corregido', ()=>{ it.monto=m; it.fecha=f; it.det=det; }); },
-  histDel(d){ const arr=d.k==='g'?'gastos':'movs'; ui.sheet=null; commit('Borrado', ()=>{ S[arr].splice(+d.i,1); }); },
+  histDel(d){ const arr=d.k==='g'?'gastos':'movs', sig=ui.sheet&&ui.sheet.sig, ix=sig?S[arr].findIndex(x=>JSON.stringify(x)===sig):+d.i; ui.sheet=null; if(ix<0){ toast('Ese registro cambió mientras lo mirabas. Ábrelo de nuevo.'); render(); return; } commit('Borrado', ()=>{ S[arr].splice(ix,1); }); },
   saveCfg(){ commit('Ajustes guardados', ()=>{ S.cfg.regalosMes=num(V('cfR',String(S.cfg.regalosMes)))||S.cfg.regalosMes; S.cfg.tpl={antes:V('cfA',S.cfg.tpl.antes),hoy:V('cfH',S.cfg.tpl.hoy),atrasada:V('cfT',S.cfg.tpl.atrasada)}; }); clearForm('cfR','cfA','cfH','cfT'); },
   reset(){ commit('Datos originales restaurados', ()=>{ S=fresh(); }); FORM={}; picks={}; },
   csv(){ const {paid,vMap,kMap}=idx(); const rows=[['venta','cliente','vendedor','fecha_venta','cuota','monto','pagado','saldo','vence']];
@@ -1058,6 +1090,9 @@ const A = {
 };
 
 function saveSale(){
+  // si un perfume elegido ya no está disponible (lo vendió otra persona mientras tanto), no se guarda
+  const malas=Object.keys(picks||{}).filter(id=>{ const [bid,ml]=id.split('|'), b=S.bottles.find(x=>x.id===bid); return !b||(ml?b.estado!=='Abierta':!['Stock','En camino','Revisar'].includes(b.estado)); });
+  if(malas.length){ for(const id of malas) delete picks[id]; toast('Un perfume ya no está disponible (se vendió recién). Revisa la venta.'); render(true); return; }
   const ch=chosenItems(); if(!ch.length) return;
   const items=[]; for(const c of ch) for(let i=0;i<c.qty;i++) items.push(c.dec?{t:'d',ref:c.ref,size:c.size,u:c.u,nombre:c.nombre,lista:c.lista,costo:c.costos[i]}:{t:'b',ref:c.ref,nombre:c.nombre,lista:c.lista,costo:c.costo});
   const L=items.reduce((a,i)=>a+i.lista,0), T0=V('stot')!==''?num(V('stot')):L; if(!T0) return;
@@ -1106,7 +1141,7 @@ function stockText(){ const g={}; for(const b of S.bottles.filter(x=>x.estado===
   return `*Perfumes disponibles en Pasnó*\n${Object.entries(g).map(([t,l])=>`\n*${t}*\n${[...new Set(l)].join('\n')}`).join('\n')}${ab.length?`\n\n*Decants*\n${ab.join('\n')}`:''}\n\nTodos originales. Pregunta por cuotas sin interés.`; }
 
 const DIA_OPTS=[['','5° día hábil del mes (normal)'],['1','Día 1'],['10','Día 10'],['15','Día 15'],['20','Día 20'],['25','Día 25'],['30','Día 30 (fin de mes)']];
-function updCompra(id){ const c=S.compras.find(x=>x.id===id); if(c) c.estado=S.bottles.some(b=>b.compra===id&&b.estado==='En camino')?'En camino':'Recibida'; }
+function updCompra(id){ const c=S.compras.find(x=>x.id===id); if(c) c.estado=S.bottles.some(b=>b.compra===id&&(b.estado==='En camino'||(b.porEntregar&&!b.llego)))?'En camino':'Recibida'; }
 // la diferencia de un pago parcial va a la siguiente cuota que siga pendiente; si no hay, a una nueva desde hoy
 function nextOf(c){ const {paid}=idx(); return S.cuotas.filter(x=>x.venta===c.venta&&x.n>c.n&&!x.perdida&&saldoC(x,paid)>0).sort((a,b)=>a.n-b.n)[0]; }
 
@@ -1126,16 +1161,65 @@ A.copyShare=()=>{ const el=$('#shareTxt'); const ok=()=>toast('Copiado: pégalo 
   try{ navigator.clipboard.writeText(el.value).then(ok,()=>{ el.select(); toast('Texto seleccionado: cópialo'); }); }catch(e){ el.select(); toast('Texto seleccionado: cópialo'); } };
 document.addEventListener('input', e=>{ if(e.target.id==='shareTxt'){ const a=$('#shareWa'), s=ui.sheet; if(a&&s){ const v=s.k==='venta'?S.ventas.find(x=>x.id===s.id):null; a.href=waHref(v?S.clientes.find(c=>c.id===v.cliente):{},e.target.value); } } });
 
+/* ---------- juntar cambios de dos personas ----------
+   base = lo último que este teléfono sabe que quedó en el servidor; mine = lo de este teléfono; theirs = lo que hay ahora en el servidor.
+   Se junta registro por registro: lo que agregó cada uno se suma, lo que cambió uno solo se respeta,
+   y si los dos cambiaron lo mismo gana lo del servidor (y se avisa). */
+const MERGE_ID=['bottles','ventas','cuotas','pagos','clientes','compras','deudas','proveedores','consignas','vendedores'];
+const MERGE_LIST=['gastos','movs','saldos','iaHist'];
+function mergeDocs(base,mine,theirs,sinBase){
+  // sinBase: no sé qué había antes (respaldo viejo del teléfono): no borro nada, solo agrego y actualizo lo mío
+  const J=x=>JSON.stringify(x), out=JSON.parse(J(theirs)), avisos=[];
+  // 1. ventas nuevas mías con un número que el otro también usó: les doy un número nuevo
+  const baseV=new Set((base.ventas||[]).map(v=>v.id)), theirsV=new Map((theirs.ventas||[]).map(v=>[v.id,v]));
+  let maxV=Math.max(0,...[...(mine.ventas||[]),...(theirs.ventas||[])].map(v=>+String(v.id).slice(1)||0));
+  for(const v of (mine.ventas||[])){ if(baseV.has(v.id)||!theirsV.has(v.id)||J(theirsV.get(v.id))===J(v)) continue;
+    const old=v.id, nu='V'+String(++maxV).padStart(3,'0');
+    v.id=nu; (mine.cuotas||[]).forEach(c=>{ if(c.venta===old) c.venta=nu; });
+    (mine.bottles||[]).forEach(b=>{ if(b.venta===old&&!(base.bottles||[]).some(x=>x.id===b.id&&x.venta===old)) b.venta=nu; });
+    (mine.gastos||[]).forEach(g=>{ if(g.ref&&g.ref.venta===old) g.ref.venta=nu; });
+    (mine.iaHist||[]).forEach(h=>{ if(h.fin&&h.fin.venta===old) h.fin.venta=nu; });
+    avisos.push(`Tu venta ${old} quedó como ${nu} (la otra persona usó el mismo número).`); }
+  if(out.cfg) out.cfg.nextV=Math.max(out.cfg.nextV||0,maxV);
+  // 2. listas con id
+  for(const key of MERGE_ID){
+    const B=new Map((base[key]||[]).map(x=>[x.id,J(x)])), M=new Map((mine[key]||[]).map(x=>[x.id,x])), T=out[key]=out[key]||[];
+    const Ti=new Map(T.map((x,i)=>[x.id,i]));
+    for(const [id,x] of M){ const jx=J(x);
+      if(!B.has(id)){ if(!Ti.has(id)) T.push(x); continue; }        // lo agregué yo
+      if(B.get(id)===jx) continue;                                    // no lo toqué
+      if(!Ti.has(id)) continue;                                       // el otro lo borró
+      const jt=J(T[Ti.get(id)]);
+      if(jt===B.get(id)) T[Ti.get(id)]=x;                             // solo lo cambié yo
+      else if(jt!==jx) avisos.push(`${key==='bottles'?'Un perfume':key==='clientes'?'Un cliente':'Un registro'} lo cambiaron los dos al mismo tiempo: quedó lo de la otra persona.`); }
+    if(!sinBase) for(const [id,jb] of B) if(!M.has(id)&&Ti.has(id)&&J(T[Ti.get(id)])===jb){ const i=T.findIndex(x=>x.id===id); if(i>=0) T.splice(i,1); } // lo borré yo
+  }
+  // 3. listas sin id: se comparan registros completos
+  for(const key of MERGE_LIST){
+    const cnt=a=>{ const m=new Map(); for(const x of a||[]){ const j=J(x); m.set(j,(m.get(j)||0)+1); } return m; };
+    const cb=cnt(base[key]), cm=cnt(mine[key]), T=out[key]=out[key]||[], ct=cnt(T);
+    for(const [j,n] of cm){ const add=n-(cb.get(j)||0)-Math.max(0,(ct.get(j)||0)-(cb.get(j)||0)); for(let i=0;i<add;i++) T.push(JSON.parse(j)); }
+    if(!sinBase) for(const [j,n] of cb){ let del=n-(cm.get(j)||0); while(del-->0){ const i=T.findIndex(x=>J(x)===j); if(i>=0) T.splice(i,1); } }
+  }
+  // 4. ajustes y memoria de la IA: lo que cambié yo
+  for(const key of ['cfg','iaMem']){ const b=base[key]||{}, m=mine[key]||{}; out[key]=out[key]||{};
+    for(const k of Object.keys(m)) if(J(m[k])!==J(b[k])) out[key][k]=m[k]; }
+  // 5. un perfume vendido por los dos
+  for(const v of out.ventas||[]) for(const it of v.items||[]) if(it.t==='b'){ const b=(out.bottles||[]).find(x=>x.id===it.ref); if(b&&b.venta&&b.venta!==v.id) avisos.push(`El perfume ${b.name} quedó en dos ventas (${b.venta} y ${v.id}): revisa y anula una.`); }
+  return {doc:out,avisos:[...new Set(avisos)]};
+}
+
 /* ===================== v5: datos en línea =====================
    Todo el negocio vive en una sola fila de Supabase (tabla pasno_doc, id=1) con un número de versión.
    Cada cambio guarda la fila completa solo si nadie la cambió antes (version = la que tengo).
    Si otra persona guardó primero, recargo y aviso. Sin señal, el cambio queda pendiente y se reintenta. */
 const CFG = window.PASNO_CONFIG || {};
 const CLOUD = !!(CFG.url && CFG.anonKey && window.supabase);
-let sb=null, me=null, docVersion=null, pushing=false, dirty=false, seq=0, syncState='ok', lastSync=null, chan=null;
+let sb=null, me=null, docVersion=null, pushing=false, dirty=false, seq=0, syncState='ok', lastSync=null, chan=null, baseJ=null;
 
-function cacheLocal(){ try{ localStorage.setItem(KEY, JSON.stringify({S,docVersion,dirty})); }catch(e){} }
+function cacheLocal(){ try{ localStorage.setItem(KEY, JSON.stringify({S,docVersion,dirty,base:baseJ,me})); }catch(e){} }
 function persist(){ seq++; if(CLOUD) dirty=true; cacheLocal(); if(CLOUD) pushDoc(); }
+const quien=e=>{ e=(e||'').toLowerCase(); return e.startsWith('matias')?'Mati':e.startsWith('yanez')?'Wanda':e.startsWith('csaavedrana')?'Camila':e.split('@')[0]; };
 function setSync(s){ syncState=s; const el=document.getElementById('sync'); if(!el) return;
   const m={ok:['Guardado','ok'],saving:['Guardando…','n'],offline:['Sin conexión: se guarda al volver','w'],conflict:['Actualizado por otra persona','n']}[s]||['',''];
   el.textContent=m[0]; el.className='chip '+m[1]; el.hidden=!CLOUD; }
@@ -1145,10 +1229,9 @@ async function pushDoc(){
     const snapshot=JSON.parse(JSON.stringify(S)), mySeq=seq, next=docVersion+1;
     const {data,error}=await sb.from('pasno_doc').update({data:snapshot,version:next,updated_by:me?me.email:null,updated_at:new Date().toISOString()}).eq('id',1).eq('version',docVersion).select('version');
     if(error) throw error;
-    if(!data||!data.length){ // otra persona guardó primero
-      await loadDoc(true); undoSnap=null;
-      toast('Otra persona guardó un cambio al mismo tiempo. Recargué los datos: revisa y vuelve a anotar lo último.'); }
-    else { docVersion=data[0].version; dirty=(seq!==mySeq); lastSync=new Date(); setSync('ok'); }
+    if(!data||!data.length){ // otra persona guardó primero: junto mis cambios con los suyos y vuelvo a subir
+      pushing=false; await loadDoc(); return; }
+    else { docVersion=data[0].version; baseJ=JSON.stringify(snapshot); dirty=(seq!==mySeq); lastSync=new Date(); setSync('ok'); }
   }catch(e){ pushing=false; setSync('offline'); clearTimeout(pushDoc.t); pushDoc.t=setTimeout(pushDoc,30000); return; }
   finally{ cacheLocal(); }
   pushing=false; if(dirty) pushDoc();
@@ -1157,7 +1240,16 @@ async function loadDoc(force){
   const {data,error}=await sb.from('pasno_doc').select('data,version,updated_by,updated_at').eq('id',1).maybeSingle();
   if(error) throw error;
   if(!data) throw new Error('Falta la fila inicial en pasno_doc');
-  if(data.data && (force || !dirty || data.version>docVersion)){ S=data.data; dirty=false; }
+  if(data.data && dirty && !force && data.version>docVersion){
+    // tengo cambios sin subir y otra persona guardó: se juntan (no se pierde nada)
+    try{ localStorage.setItem('pasno-antes-de-juntar',JSON.stringify({fecha:new Date().toISOString(),S})); }catch(e){}
+    const base=baseJ?JSON.parse(baseJ):data.data, {doc,avisos}=mergeDocs(base,S,data.data,!baseJ);
+    S=doc; baseJ=JSON.stringify(data.data); docVersion=data.version; undoSnap=null; cacheLocal();
+    const who=quien(data.updated_by);
+    toast(avisos.length?avisos.join(' '):`Se juntaron tus cambios con los de ${who||'otra persona'}.`);
+    try{ render(); }catch(e){}
+    pushDoc(); return data; }
+  if(data.data && (force || !dirty || data.version>docVersion)){ if(S&&JSON.stringify(S)!==JSON.stringify(data.data)) undoSnap=null; S=data.data; dirty=false; baseJ=JSON.stringify(data.data); }
   docVersion=data.version; lastSync=new Date(); cacheLocal(); setSync('ok');
   return data;
 }
@@ -1167,10 +1259,12 @@ function subscribe(){
     const v=p.new&&p.new.version; if(v==null||v<=docVersion||pushing) return;
     if(dirty){ return; } // tengo cambios propios por subir: pushDoc resolverá el choque
     await loadDoc(); undoSnap=null; render();
-    const who=(p.new.updated_by||'').split('@')[0]; if(me&&p.new.updated_by!==me.email) toast(`Datos actualizados${who?' por '+who:''}`);
+    const who=quien(p.new.updated_by); if(me&&p.new.updated_by!==me.email) toast(`Datos actualizados${who?' por '+who:''}`);
   }).subscribe();
 }
-window.addEventListener('online',()=>{ if(CLOUD&&dirty) pushDoc(); });
+function reconnect(){ if(!CLOUD||!sb) return; if(!me||!me.nombre){ start(); return; }
+  loadDoc().then(()=>{ subscribe(); if(dirty) pushDoc(); render(); }).catch(()=>setSync('offline')); }
+window.addEventListener('online',reconnect);
 document.addEventListener('visibilitychange',()=>{ if(CLOUD&&sb&&me&&document.visibilityState==='visible'&&!dirty) loadDoc().then(()=>render()).catch(()=>setSync('offline')); });
 
 /* ---------- pantallas de entrada ---------- */
@@ -1198,7 +1292,10 @@ function vImport(msg){
 async function start(){
   shell('<p class="note" style="margin-top:40px;text-align:center">Cargando…</p>');
   try{
-    const {data:{user}}=await sb.auth.getUser(); if(!user){ vLogin(); return; }
+    const {data:{user},error:ue}=await sb.auth.getUser();
+    if(!user){ const {data:{session}}=await sb.auth.getSession();
+      if(session&&S&&(ue||!navigator.onLine)){ me=me||{email:session.user.email,nombre:''}; setSync('offline'); render(true); return; } // sin señal: sigo con lo del teléfono
+      vLogin(); return; }
     const {data:prof}=await sb.from('pasno_users').select('email,nombre').eq('email',user.email.toLowerCase()).maybeSingle();
     if(!prof){ shell(`<h2>Sin acceso</h2><p class="note">${esc(user.email)} no está autorizado para ver Pasnó. Pídele a Camila que te agregue.</p><button class="btn ghost" id="lo">Salir</button>`); $('#lo').onclick=()=>sb.auth.signOut().then(()=>vLogin()); return; }
     me=prof; if(['Mati','Wanda'].includes(me.nombre)){ ui.vend=me.nombre; ui.pRecibe=me.nombre; }
@@ -1212,7 +1309,7 @@ async function start(){
 }
 function boot(){
   const hdr=document.querySelector('header.top .topicons'); if(hdr&&!document.getElementById('sync')){ const s=document.createElement('span'); s.id='sync'; s.className='chip ok'; s.hidden=true; s.style.alignSelf='center'; hdr.prepend(s); }
-  try{ const x=JSON.parse(localStorage.getItem(KEY)); if(x&&x.S&&x.S.v===4){ S=x.S; docVersion=x.docVersion??null; dirty=!!x.dirty; } }catch(e){}
+  try{ const x=JSON.parse(localStorage.getItem(KEY)); if(x&&x.S&&x.S.v===4){ S=x.S; docVersion=x.docVersion??null; dirty=!!x.dirty; baseJ=x.base||null; me=x.me||null; } }catch(e){}
   if(!CLOUD){ if(!S){ if(typeof SEED!=='undefined'&&SEED){ S=fresh(); cacheLocal(); } else { vImport('Modo prueba (sin conexión a la base de datos). Carga pasno_datos_iniciales.json para ver la app con datos.'); return; } } render(true); return; }
   sb=window.supabase.createClient(CFG.url,CFG.anonKey,{auth:{persistSession:true,autoRefreshToken:true,storageKey:'pasno-auth'}});
   start();
@@ -1310,7 +1407,7 @@ function vConsignaFlow(){
 const _vStock=vStock;
 vStock=function(){ const k=calc();
   return `<div class="topbar"><h2>Stock</h2></div>
-  <div class="seg scroll" role="group" aria-label="Sección"><button data-a="stockSeg" data-seg="stock" ${pressed(ui.stockSeg==='stock')}>Mi stock</button><button data-a="stockSeg" data-seg="pedidos" ${pressed(ui.stockSeg==='pedidos')}>Pedidos${k.deuda?` · debes ${clp(k.deuda)}`:''}</button><button data-a="stockSeg" data-seg="consigna" ${pressed(ui.stockSeg==='consigna')}>Consignación${k.nConsig?' ('+k.nConsig+')':''}</button></div>
+  <div class="seg3" role="group" aria-label="Sección"><button data-a="stockSeg" data-seg="stock" ${pressed(ui.stockSeg==='stock')}>Mi stock</button><button data-a="stockSeg" data-seg="pedidos" ${pressed(ui.stockSeg==='pedidos')}>Pedidos${k.deuda?`<small>debes ${clp(k.deuda)}</small>`:''}</button><button data-a="stockSeg" data-seg="consigna" ${pressed(ui.stockSeg==='consigna')}>Consignación${k.nConsig?`<small>${k.nConsig} afuera</small>`:''}</button></div>
   ${ui.stockSeg==='stock'?vMiStock(k):ui.stockSeg==='pedidos'?vPedidos(k):vConsigna()}`; };
 SCREENS.stock=vStock; SCREENS.f_consigna=vConsignaFlow;
 const _vAddSheet=vAddSheet;
@@ -1343,7 +1440,7 @@ Object.assign(A,{
       S.ventas.push({id,cliente:k.id,fecha:f,vendedor:v.nombre,total:T,pie:0,items,consigna:v.id});
       S.cuotas.push({id:uid('C'),venta:id,n:1,monto:T,vence:v.cobro==='venta'?f:schedule(f,1,k.dia)[0]}); }); },
   consDevSave(d){ const v=vendOf(d.id), ids=new Set(consItems(v.id).filter(i=>i.estado==='fuera'&&ui.consSel[i.id]).map(i=>i.id)); if(!ids.size) return; ui.sheet=null;
-    commit(`${ids.size} producto${ids.size>1?'s':''} de vuelta en tu stock`, ()=>{ for(const g of consignas()) for(const i of g.items) if(ids.has(i.id)){ i.estado='devuelto'; i.fechaFin=today(); if(i.t==='b'){ const b=S.bottles.find(x=>x.id===i.ref); if(b) b.estado='Stock'; } } }); },
+    commit(`${ids.size} producto${ids.size>1?'s':''} de vuelta en tu stock`, ()=>{ for(const g of consignas()) for(const i of g.items) if(ids.has(i.id)){ i.estado='devuelto'; i.fechaFin=today(); if(i.t==='b'){ const b=S.bottles.find(x=>x.id===i.ref); if(b) b.estado='Stock'; } else if(i.t==='d'){ const b=S.bottles.find(x=>x.id===i.ref); if(b&&b.estado==='Agotada'&&b.dec) b.dec.ajuste=(b.dec.ajuste||0)+(i.costo||0); } } }); },
   consPremio(d){ ui.sheet={t:'consPremio',id:d.id}; clearForm('prq','prc'); render(); },
   premioB(d){ const v=vendOf(ui.sheet.id), b=S.bottles.find(x=>x.id===d.id); ui.sheet=null;
     commit(`Premio entregado a ${v.nombre}: ${b.name}`, ()=>{ v.premio.entregado=today(); b.estado='Comisión'; b.fSalida=today(); b.nota=`Premio de ${v.nombre} por vender todo`; }); },
@@ -1455,7 +1552,7 @@ const _pagoPick=A.pagoPick;
 A.pagoPick=d=>{ const keep=ui.iaCur!=null?{pm:FORM.pm,pf:FORM.pf}:null; _pagoPick(d); if(keep){ for(const k in keep) if(keep[k]!=null) FORM[k]=keep[k]; render(); } };
 // "¿cuál cliente?": la IA manda las opciones y se elige con un toque (y lo aprende)
 const iaFalta=a=>(a.cliente_opciones||[]).length&&!a.cliente_id&&!a._otra&&!a._esNuevo;
-function iaOpciones(a,i){ const op=a.cliente_opciones||[]; if(a._hecho||!op.length||a._otra) return '';
+function iaOpciones(a,i){ const op=(a.cliente_opciones||[]).filter(id=>S.clientes.some(k=>k.id===id)); if(a._hecho||!op.length||a._otra) return '';
   const nuevo=a.tipo==='venta'&&a.cliente_nuevo?`<div class="seg"><button data-a="iaNuevo" data-i="${i}" ${pressed(!!a._esNuevo)}>Nueva: ${esc(titleCase(a.cliente_nuevo))}</button></div>`:'';
   return `<div class="chips" style="padding:0 0 10px">${op.map(id=>{ const k=S.clientes.find(x=>x.id===id); return `<div class="seg"><button data-a="iaCli" data-i="${i}" data-v="${id}" ${pressed(a.cliente_id===id)}>${esc(k.nombre)}</button></div>`; }).join('')}${nuevo}<div class="seg"><button data-a="iaOtra" data-i="${i}">Otra persona</button></div></div>`; }
 A.iaOtra=d=>{ const a=ui.ia.acciones[+d.i]; if(!a||a._hecho) return; a._otra=true; a.cliente_id=null; A.iaAbrir({i:d.i}); };
@@ -1481,7 +1578,7 @@ function iaCheck(a){
   return a;
 }
 Object.assign(A,{
-  iaClose(){ if(ui.iaMic) ui.iaMic.stop(); if(ui.ia&&ui.ia.acciones&&ui.ia.acciones.every(a=>a._hecho)) ui.ia.done=true; tab=ui.iaFrom||'inicio'; render(true); },
+  iaClose(){ ui.iaCur=null; if(ui.iaMic) ui.iaMic.stop(); if(ui.ia&&ui.ia.acciones&&ui.ia.acciones.every(a=>a._hecho)) ui.ia.done=true; tab=ui.iaFrom||'inicio'; render(true); },
   iaEj(d){ FORM.iat=d.v; render(); },
   iaMic(){ const SR=window.SpeechRecognition||window.webkitSpeechRecognition; if(!SR) return;
     if(ui.iaMic){ ui.iaMic._enviar=true; ui.iaMic.stop(); return; }
@@ -1489,7 +1586,7 @@ Object.assign(A,{
     rec.onresult=e=>{ let tmp=''; for(let i=e.resultIndex;i<e.results.length;i++){ const t=e.results[i][0].transcript; if(e.results[i].isFinal) fin+=t+' '; else tmp+=t; } FORM.iat=(base?base+' ':'')+fin+tmp; const el=$('#iat'); if(el) el.value=FORM.iat; };
     rec.onend=()=>{ const enviar=rec._enviar; ui.iaMic=null; if(enviar&&V('iat').trim()) A.iaGo(); else render(); }; rec.onerror=()=>{ ui.iaMic=null; render(); };
     ui.iaMic=rec; rec.start(); render(); },
-  async iaGo(){ const texto=V('iat').trim(); if(!texto){ toast('Escribe o di qué quieres anotar'); return; }
+  async iaGo(){ ui.iaCur=null; const texto=V('iat').trim(); if(!texto){ toast('Escribe o di qué quieres anotar'); return; }
     if(ui.iaMic) ui.iaMic.stop();
     if(!CLOUD||!sb){ ui.ia={error:'La IA funciona solo con la app conectada (no en modo prueba).'}; render(); return; }
     if(!navigator.onLine){ ui.ia={error:'Sin conexión: usa los formularios normales.'}; render(); return; }
@@ -1500,11 +1597,18 @@ Object.assign(A,{
     }catch(e){ ui.ia={error:'No pude conectarme con la IA. Intenta de nuevo.'}; }
     if(ui.ia.acciones&&!ui.ia.acciones.length&&!(ui.ia.preguntas||[]).length) ui.ia.error='No encontré nada para anotar. Prueba contándolo de otra forma.';
     render(); },
-  iaAbrir(d){ const a=ui.ia.acciones[+d.i]; if(!a||a._hecho) return; ui.iaCur=+d.i;
-    if(a.tipo==='venta'){ const pk={}; for(const p of a.productos){ const b=S.bottles.find(x=>x.id===p.ref); if(b.estado==='Abierta'){ const k=b.id+'|'+(p.tamano_ml===10?10:5); pk[k]=(pk[k]||0)+Math.max(1,p.cantidad); } else pk[b.id]=1; }
+  iaAbrir(d){ const a=ui.ia.acciones[+d.i]; if(!a||a._hecho) return; iaCheck(a); ui.iaCur=+d.i;
+    if(a.tipo==='venta'){ const pk={}, usados=new Set(ui.ia.acciones.filter(x=>x._hecho).flatMap(x=>x._refs||[]));
+      for(const p of a.productos){ const b=S.bottles.find(x=>x.id===p.ref); if(!b) continue;
+        if(b.estado==='Abierta'){ const ml=p.tamano_ml===10&&b.dec&&b.dec.p10?10:5; const k=b.id+'|'+ml; pk[k]=(pk[k]||0)+Math.max(1,p.cantidad||1); continue; }
+        if(!['Stock','En camino'].includes(b.estado)||usados.has(b.id)) continue;
+        // "2 light blue": se toman botellas distintas del mismo perfume
+        const mismas=[b,...S.bottles.filter(x=>x.id!==b.id&&x.name===b.name&&x.ml===b.ml&&x.estado==='Stock'&&!usados.has(x.id)&&!pk[x.id])];
+        for(const x of mismas.slice(0,Math.max(1,p.cantidad||1))) pk[x.id]=1; }
+      a._refs=Object.keys(pk).filter(k=>!k.includes('|'));
       startFlow('f_vender',{picks:pk,step:Object.keys(pk).length?(a.cliente_id?3:2):1});
       if(a.cliente_id) ui.cliPick=a.cliente_id; else if(a.cliente_nuevo&&(a._esNuevo||!(a.cliente_opciones||[]).length)){ ui.newCli=true; FORM.ncn=titleCase(a.cliente_nuevo); }
-      if(a.total) FORM.stot=a.total.toLocaleString('es-CL'); if(a.cuotas) ui.n=Math.max(1,a.cuotas); if(a.pie){ ui.pieOn=true; FORM.spie=String(a.pie); }
+      if(a.total) FORM.stot=a.total.toLocaleString('es-CL'); if(a.cuotas) ui.n=Math.max(1,a.cuotas); if(a.pie){ ui.pieOn=true; FORM.spie=String(a.pie); if(!a.cuotas||a.cuotas<2) ui.n=2; }
       if(a.fecha){ FORM.sf=a.fecha; ui.showFecha=true; } if(a.medio) ui.pMedio=a.medio;
       if(a.entrega) ui.entrega=a.entrega; if(a.envio_monto!=null){ ui.entrega='envio'; FORM.senv=String(a.envio_monto); } if(a.envio_paga) ui.envPaga=a.envio_paga;
       render(true); }
@@ -1518,10 +1622,20 @@ function iaDone(rec){ if(ui.iaCur==null||!ui.ia||!ui.ia.acciones) return; const 
   try{ iaLearn(a,rec,ui.ia.texto||''); }catch(e){}
   a._hecho=true; ui.iaCur=null; if(!ui.ia.acciones.some(a=>!a._hecho)) ui.ia.done=true;
   // si se toca "Deshacer", la propuesta vuelve a quedar pendiente
-  const ub=$('#undoBtn'), ia=ui.ia; if(ub&&ub.onclick){ const orig=ub.onclick; ub.onclick=()=>{ orig(); a._hecho=false; ia.done=false; if(tab==='f_ia') render(); }; }
+  const ub=$('#undoBtn'), ia=ui.ia; if(ub&&ub.onclick){ const orig=ub.onclick; ub.onclick=()=>{ const habia=!!undoSnap; orig(); if(habia){ a._hecho=false; ia.done=false; if(tab==='f_ia') render(); } }; }
+  if(ui.ia.done){ const n=ui.ia.acciones.length; tab=ui.iaFrom||'inicio'; if(!rec||rec.tipo!=='ventas') ui.sheet=null; render(true); if(n>1) setTimeout(()=>{ if(!$('#toast').hidden&&$('#undoBtn')) return; toast(`Listo: ${n} cosas anotadas`); },50); return; }
   tab='f_ia'; if(!rec||rec.tipo!=='ventas') ui.sheet=null; render(true); }
 const IA_SAVES={saveSale:'ventas',paySave:'pagos',saveGasto:'gastos',saveMov:'movs'};
-for(const k in IA_SAVES){ const f=A[k], arr=IA_SAVES[k]; A[k]=function(...args){ const before=S[arr].length; const r=f.apply(this,args); if(S[arr].length>before) iaDone({tipo:arr,nuevos:S[arr].slice(before)}); return r; }; }
+for(const k in IA_SAVES){ const f=A[k], arr=IA_SAVES[k]; A[k]=function(...args){
+  // una botella que ya no está disponible (la vendió otra persona, o ya se usó) no se puede volver a vender
+  if(k==='saveSale'){ const malas=Object.keys(picks||{}).filter(id=>{ const [bid,ml]=id.split('|'), b=S.bottles.find(x=>x.id===bid); return !b||(ml?b.estado!=='Abierta':!['Stock','En camino'].includes(b.estado)); });
+    if(malas.length){ for(const id of malas) delete picks[id]; toast('Un perfume ya no está disponible (se vendió recién). Revisa la venta.'); render(); return; } }
+  const deIA=ui.iaCur!=null&&ui.flowFrom==='f_ia'&&tab.startsWith('f_');
+  const favor=()=>S.clientes.reduce((s,x)=>s+(x.favor||0),0), before=S[arr].length, f0=favor(); const r=f.apply(this,args);
+  // un pago que quedó todo como saldo a favor no agrega pagos, pero igual cuenta como guardado
+  if((S[arr].length>before||(k==='paySave'&&favor()!==f0))&&deIA) iaDone({tipo:arr,nuevos:S[arr].slice(before)});
+  else if(!deIA) ui.iaCur=null;
+  return r; }; }
 
 /* ---------- La IA aprende de las correcciones ----------
    Si la propuesta decía una cosa y se guardó otra (otro cliente, otro perfume, otra categoría, otro monto),
@@ -1538,13 +1652,14 @@ function iaLearn(a,rec,texto){
   if(cli&&a.cliente_dicho&&(cli!==a.cliente_id||a._elegido)){ const d=sinArticulo(a.cliente_dicho);
     if(d){ M.alias=M.alias.filter(x=>x.d!==d); M.alias.push({d,id:cli,f}); if(M.alias.length>150) M.alias.shift(); } }
   if(rec.tipo==='ventas'){
-    const prop=(a.productos||[]).map(p=>{ const b=S.bottles.find(x=>x.id===p.ref); return b?b.name:null; }).filter(Boolean).sort();
+    const propRefs=[...new Set((a.productos||[]).map(p=>p.ref))].sort(), realRefs=[...new Set(r.items.filter(i=>i.t!=='x').map(i=>i.ref))].sort();
+    const prop=propRefs.map(id=>{ const b=S.bottles.find(x=>x.id===id); return b?b.name:null; }).filter(Boolean);
     const real=[...new Set(r.items.filter(i=>i.t!=='x').map(i=>i.nombre))].sort();
-    if(prop.length&&[...new Set(prop)].join('|')!==real.join('|')) notas.push(`En "${cit}" el perfume era ${real.join(', ')}, no ${[...new Set(prop)].join(', ')}.`);
+    if(propRefs.length&&propRefs.join('|')!==realRefs.join('|')&&[...new Set(prop)].sort().join('|')!==real.join('|')) notas.push(`En "${cit}" el perfume era ${real.join(', ')}, no ${[...new Set(prop)].join(', ')}.`);
     const tot=r.total-r.items.filter(i=>i.t==='x').reduce((s,i)=>s+i.precio,0);
     if(a.total&&a.total!==tot) notas.push(`En "${cit}" el total era ${tot}, no ${a.total}.`);
   }
-  if(rec.tipo==='pagos'){ const m=rec.nuevos.reduce((s,x)=>s+x.monto,0); if(a.monto&&a.monto!==m) notas.push(`En "${cit}" el monto era ${m}, no ${a.monto}.`); }
+  // en pagos no se aprende el monto: puede haberse ido a saldo a favor o repartido en cuotas
   if(rec.tipo==='gastos'){ if(a.gasto_categoria&&a.gasto_categoria!==r.cat) notas.push(`En "${cit}" el gasto era de categoría ${r.cat}, no ${a.gasto_categoria}.`);
     if(a.monto&&a.monto!==r.monto) notas.push(`En "${cit}" el monto era ${r.monto}, no ${a.monto}.`); }
   if(rec.tipo==='movs'){ if(a.mov_tipo&&a.mov_tipo!==r.tipo) notas.push(`En "${cit}" el movimiento era ${r.tipo}, no ${a.mov_tipo}.`);
@@ -1555,7 +1670,7 @@ function iaLearn(a,rec,texto){
   else if(rec.tipo==='pagos') Object.assign(fin,{cliente:cli,monto:rec.nuevos.reduce((s,x)=>s+x.monto,0),medio:r.medio||null});
   else if(rec.tipo==='gastos') Object.assign(fin,{cat:r.cat,monto:r.monto});
   else Object.assign(fin,{mov:r.tipo,monto:r.monto});
-  H.push({log:ui.ia&&ui.ia.log,f,texto:cit,n:ui.iaCur,fin}); if(H.length>500) H.splice(0,H.length-500);
+  H.push({log:ui.ia&&ui.ia.log,f,texto:cit,n:ui.iaCur,fin}); if(H.length>150) H.splice(0,H.length-150);
   for(const txt of notas){ M.notas.push({txt,f}); } if(M.notas.length>40) M.notas.splice(0,M.notas.length-40);
   save();
 }
@@ -1569,71 +1684,56 @@ SCREENS.iamem=vIAMem;
 A.iaMemOpen=()=>{ goTo('iamem'); };
 A.iaMemDel=d=>{ const M=iaMem(), x=M[d.k][+d.i]; if(!x) return; commit('Borrado', ()=>{ M[d.k].splice(+d.i,1); }); };
 
-/* ---------- Prueba de la IA: 30 frases a la manera de Mati ---------- */
-// las frases de prueba usan nombres reales de clientes: viven en los datos privados (S.iaTest), no en este código público
-const iaTests=()=>S.iaTest||[];
-function iaGrade(exp,res){
-  const acc=res.acciones||[], errs=[];
-  if(exp.length===1&&exp[0].preg){ const okP=(res.preguntas||[]).length>0&&!acc.some(a=>a.tipo==='venta'&&(a.productos||[]).length); return okP?[]:['debía preguntar porque ese perfume no está en stock']; }
-  if(!exp.length) return acc.length?['no debía anotar nada']:[];
-  if(acc.length<exp.length) return [`propuso ${acc.length} registro(s), se esperaban ${exp.length}`];
-  exp.forEach((e,i)=>{ const a=acc[i]; if(a.tipo!==e.tipo){ errs.push(`tipo ${a.tipo} ≠ ${e.tipo}`); return; }
-    if(e.cli){ const k=S.clientes.find(c=>c.id===a.cliente_id); if(!k||norm(k.nombre)!==norm(e.cli)) errs.push(`cliente ${k?k.nombre:'—'} ≠ ${e.cli}`); }
-    if(e.nuevo&&!a.cliente_nuevo) errs.push('no detectó cliente nuevo');
-    for(const [f,ef] of [['cuotas','cuotas'],['total','total'],['monto','monto'],['pie','pie']]) if(e[ef]!=null&&a[f]!==e[ef]) errs.push(`${f} ${a[f]} ≠ ${e[ef]}`);
-    if(e.cat&&a.gasto_categoria!==e.cat) errs.push(`categoría ${a.gasto_categoria} ≠ ${e.cat}`);
-    if(e.mov&&a.mov_tipo!==e.mov) errs.push(`tipo ${a.mov_tipo} ≠ ${e.mov}`);
-    if(e.env&&a.envio_monto!==e.env) errs.push(`envío ${a.envio_monto} ≠ ${e.env}`);
-  });
-  return errs;
-}
-// el avance se guarda en este teléfono: si se cierra la pantalla, la prueba sigue donde quedó
-const IAT_KEY='pasno-iatest';
-// precio por millón de tokens (entrada, salida) en USD
-const IA_MODELOS={auto:['Automático',0,0],'claude-opus-5-5':['Opus 5.5',4,20],'claude-sonnet-5-5':['Sonnet 5.5',2,10],'claude-haiku-5-5':['Haiku 5.5',0.1,0.5]};
-function iatLoad(){ if(ui.iaTest) return ui.iaTest; try{ const r=JSON.parse(localStorage.getItem(IAT_KEY)||'null'); if(r&&Array.isArray(r.res)) return ui.iaTest={running:false,res:r.res,modelo:r.modelo||'auto'}; }catch(e){} return ui.iaTest={running:false,res:[],modelo:'auto'}; }
-function iatSave(){ try{ localStorage.setItem(IAT_KEY,JSON.stringify({res:ui.iaTest.res,modelo:ui.iaTest.modelo})); }catch(e){} }
-function vIATest(){
-  const T=iatLoad(), N=iaTests().length;
-  const done=T.res.length, ok=T.res.filter(r=>!r.errs.length).length, tin=T.res.reduce((a,r)=>a+(r.u?r.u.input_tokens:0),0), tout=T.res.reduce((a,r)=>a+(r.u?r.u.output_tokens:0),0);
-  const [mNom,pin,pout]=IA_MODELOS[T.modelo]||IA_MODELOS.auto, usd=T.res.reduce((a,r)=>a+(r.out&&r.out.costo_usd!=null?r.out.costo_usd:(r.u?r.u.input_tokens/1e6*pin+r.u.output_tokens/1e6*pout:0)),0), esc_=T.res.filter(r=>r.out&&r.out.escalado).length;
-  const elegir=T.running?'':`<div class="field"><span class="lab">Modelo para ${done&&done<N?'empezar de nuevo':'la prueba'}</span>${segBtns('iaTestModelo',Object.entries(IA_MODELOS).map(([k,v])=>[k,v[0]]),ui.iaTestM||T.modelo)}</div>`;
-  const btns=T.running?'':!done?`<button class="btn block" data-a="iaTestRun">Empezar la prueba</button>`
-    :`<div class="acts">${done<N&&(ui.iaTestM||T.modelo)===T.modelo?`<button class="btn" data-a="iaTestRun">Continuar (${done} de ${N})</button>`:''}<button class="btn ghost" data-a="iaTestRun" data-v="nueva">Empezar de nuevo</button></div>`;
-  return `<div class="topbar"><button class="back" data-a="go" data-to="ajustes" aria-label="Volver">←</button><h2>Probar la IA</h2></div>
-  <p class="note" style="margin-top:0">Manda ${N} frases escritas como las diría Mati y revisa si la IA propone lo correcto. No guarda nada. Usa la IA ${N} veces (Automático es lo que usa la app: Haiku y, si no tiene sentido, Opus) y no cuenta para el límite diario de uso normal.</p>
-  ${elegir}
-  ${T.error?`<div class="warnbox" style="margin-top:12px">Se detuvo: ${esc(T.error)}</div>`:''}
-  ${btns}
-  ${done?`<div class="card" style="margin-top:12px"><span class="lab">${mNom} · Resultado${T.running?' (en curso)':done<N?' (a medias)':''}</span><span style="font-size:22px;font-weight:700">${ok} de ${done} correctas</span><span class="s">${tin.toLocaleString('es-CL')} tokens de entrada · ${tout.toLocaleString('es-CL')} de salida · costo aprox. USD ${usd.toFixed(3)}${T.modelo==='auto'?` · ${esc_} de ${done} pasaron a Opus`:''}</span></div>
-  <div class="list" style="margin-top:12px">${T.res.map(r=>`<div class="row"><div class="main"><div class="t" style="white-space:normal">${r.errs.length?'✗':'✓'} ${esc(r.t)}</div><div class="s" style="white-space:normal">${r.out&&r.out.escalado?'[Opus: '+esc(r.out.escalado)+'] ':''}${r.errs.length?esc(r.errs.join(' · ')):esc((r.out.acciones||[]).map(a=>a.resumen).join(' / ')||(r.out.preguntas||[]).join(' ')||'sin registros')}</div></div></div>`).join('')}</div>`:''}
-  ${T.running?'<p class="note">Probando… si cierras la pantalla, al volver puedes continuar donde quedó.</p>':''}`;
-}
-SCREENS.iatest=vIATest;
-A.iaTestOpen=()=>{ goTo('iatest'); };
-A.iaTestModelo=d=>{ ui.iaTestM=d.v; render(); };
-A.iaTestRun=async(d)=>{ if(!CLOUD||!sb){ toast('La prueba funciona solo con la app conectada'); return; }
-  const T=iatLoad(); if(T.running) return;
-  const m=ui.iaTestM||T.modelo; if(d&&d.v==='nueva'||m!==T.modelo){ T.res=[]; T.modelo=m; }
-  T.running=true; T.error=null; iatSave(); render();
-  const L=iaTests();
-  for(let i=T.res.length;i<L.length;i++){ const [t,exp]=L[i];
-    let out={}, u=null;
-    try{ const {data,error}=await sb.functions.invoke('pasno-ia',{body:{texto:t,hoy:today(),prueba:true,...(T.modelo==='auto'?{}:{modelo:T.modelo})}}); if(error){ let m='error'; try{ m=(await error.context.json()).error; }catch(e){} out={error:m}; } else { out=data; u=data.usage; } }catch(e){ out={error:'sin conexión'}; }
-    // si falla la conexión o el límite, se detiene sin contar esa frase, para retomarla después
-    if(out.error){ T.error=out.error; break; }
-    T.res.push({t,out,errs:iaGrade(exp,out),u}); iatSave(); if(tab==='iatest') render();
-  }
-  T.running=false; if(tab==='iatest') render(); };
-const _vAjustes2=vAjustes;
-vAjustes=function(){ const nm=S.iaMem?S.iaMem.alias.length+S.iaMem.notas.length:0; return _vAjustes2().replace('<button class="btn ghost" data-a="install">',`${CLOUD?'<button class="btn ghost" data-a="iaMemOpen">✨ Lo que aprendió la IA'+(nm?' ('+nm+')':'')+'</button>':''}${CLOUD&&(S.iaTest||[]).length?'<button class="btn ghost" data-a="iaTestOpen">✨ Probar la IA con '+S.iaTest.length+' frases</button>':''}<button class="btn ghost" data-a="install">`); };
-SCREENS.ajustes=vAjustes;
+
 
 // versión visible al final de Ajustes, para saber si el teléfono ya tiene la última
-const APP_VER='15-10 00:01';
-const _vAjustes3=vAjustes;
-vAjustes=function(){ return _vAjustes3()+`<p class="note" style="text-align:center;margin-top:18px">Versión ${APP_VER}</p>`; };
+const APP_VER='15-10 00:22';
+
+/* ---------- Ajustes: lista agrupada, cada cosa se edita en su propia hoja ---------- */
+const AJ_MSG={antes:['Antes de que venza','Se manda unos días antes del vencimiento.'],hoy:['El día que vence','Se manda el mismo día del vencimiento.'],atrasada:['Cuota atrasada','Para cuando ya pasó la fecha.']};
+const ajRow=(a,t,s,extra='')=>`<button class="rowbtn" data-a="${a}" ${extra}><div class="main"><div class="t">${t}</div>${s?`<div class="s" style="white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${s}</div>`:''}</div><span class="s">›</span></button>`;
+vAjustes=function(){
+  const nm=S.iaMem?S.iaMem.alias.length+S.iaMem.notas.length:0;
+  const cuenta=CLOUD&&me?`<div class="card"><span class="lab">Tu cuenta</span><span class="t">${esc(me.nombre)}</span><span class="s">${esc(me.email)}</span><span class="s">${syncState==='ok'?'✓ Todo guardado en línea':syncState==='offline'?'Sin conexión: se sube al volver la señal':'Guardando…'}${lastSync?' · '+lastSync.toLocaleTimeString('es-CL',{hour:'2-digit',minute:'2-digit'}):''}</span><div class="acts"><button class="btn ghost" data-a="pwOpen">Cambiar mi clave</button><button class="btn ghost" data-a="logout">Cerrar sesión</button></div></div>`
+    :'<div class="card"><span class="lab">Modo prueba</span><span class="s">Los datos se guardan solo en este teléfono.</span></div>';
+  return `${topbar('Ajustes',ui.prev)}<div style="display:grid;gap:6px">
+  ${cuenta}
+  <h3>Mensajes de WhatsApp</h3><div class="list">
+    ${Object.entries(AJ_MSG).map(([k,[t]])=>ajRow('ajEdit',t,esc(S.cfg.tpl[k]),`data-k="${k}"`)).join('')}
+    ${ajRow('ajEdit','Firma',esc(firma()||'Sin firma'),'data-k="firma"')}
+  </div>
+  <h3>Negocio</h3><div class="list">${ajRow('ajEdit','Presupuesto de regalos',clp(S.cfg.regalosMes)+' al mes','data-k="regalos"')}</div>
+  ${CLOUD?`<h3>Asistente</h3><div class="list">${ajRow('iaMemOpen','✨ Lo que aprendió la IA',nm?nm+' nombres y correcciones':'Todavía nada')}</div>`:''}
+  <h3>Respaldo</h3><div class="list">${ajRow('backup','Descargar respaldo','Copia de todo en un archivo')}${ajRow('csv','Exportar cuotas','Para abrir en Excel')}</div>
+  <h3>Ayuda</h3><div class="list">${ajRow('install','Instalar en el iPhone','Para que quede como app en tu pantalla')}</div>
+  <p class="note" style="text-align:center;margin-top:14px">Versión ${APP_VER}</p></div>`; };
 SCREENS.ajustes=vAjustes;
+function vAjEdit(s){
+  const k=s.k;
+  if(k==='regalos') return `<div class="grab"></div><h2 style="margin:0">Presupuesto de regalos</h2><p class="note" style="margin:0">Cuánto puedes regalar al mes (perfumes que regalas o usas). La app te avisa si te pasas.</p>
+    <input id="ajv" data-k inputmode="numeric" value="${esc(V('ajv',S.cfg.regalosMes.toLocaleString('es-CL')))}" style="font-size:18px">
+    <div class="acts"><button class="btn ghost" data-a="closeSheet">Cancelar</button><button class="btn" data-a="ajSave">Guardar</button></div>`;
+  if(k==='firma') return `<div class="grab"></div><h2 style="margin:0">Firma</h2><p class="note" style="margin:0">Va al final de los mensajes de WhatsApp. Déjala vacía si no quieres firma.</p>
+    <input id="ajv" data-k value="${esc(V('ajv',firma()))}" style="font-size:18px">
+    <div class="acts"><button class="btn ghost" data-a="closeSheet">Cancelar</button><button class="btn" data-a="ajSave">Guardar</button></div>`;
+  const [t,d]=AJ_MSG[k], val=V('ajv',S.cfg.tpl[k]);
+  return `<div class="grab"></div><h2 style="margin:0">${t}</h2><p class="note" style="margin:0">${d} Las palabras entre llaves se cambian solas.</p>
+    <textarea id="ajv" data-k style="min-height:150px;font-size:15px">${esc(val)}</textarea>
+    <div class="chips">${['nombre','cuota','monto','fecha','total'].map(w=>`<div class="seg"><button data-a="ajIns" data-v="${w}">{${w}}</button></div>`).join('')}</div>
+    <div class="card" style="gap:4px"><span class="lab">Así se ve</span><span class="s" id="ajPrev" style="white-space:pre-wrap;color:var(--ink)">${esc(conFirma(fill(val,AJ_EJ)))}</span></div>
+    <div class="acts"><button class="btn ghost" data-a="ajReset">Volver al original</button><button class="btn" data-a="ajSave">Guardar</button></div>
+    <button class="btn ghost block" data-a="closeSheet">Cancelar</button>`; }
+const AJ_EJ={nombre:'Ana',cuota:2,monto:'$30.000',fecha:'5 nov',total:'$90.000'};
+// la vista previa se actualiza sola mientras escribes (sin redibujar, para no cerrar el teclado)
+document.addEventListener('input',e=>{ if(e.target.id==='ajv'){ const p=$('#ajPrev'); if(p) p.textContent=conFirma(fill(e.target.value,AJ_EJ)); } });
+A.ajEdit=d=>{ ui.sheet={t:'ajEdit',k:d.k}; clearForm('ajv'); render(); };
+A.ajIns=d=>{ const el=$('#ajv'), w=`{${d.v}}`; const v=el?el.value:V('ajv',''), i=el?el.selectionStart:v.length; FORM.ajv=v.slice(0,i)+w+v.slice(i); render(); };
+A.ajReset=()=>{ FORM.ajv=TPL[ui.sheet.k]; render(); };
+A.ajSave=()=>{ const k=ui.sheet.k, v=V('ajv',''); 
+  if(k==='regalos'){ const n=num(v); if(!n&&n!==0) return; commit('Presupuesto guardado',()=>{ S.cfg.regalosMes=n; }); }
+  else if(k==='firma') commit('Firma guardada',()=>{ S.cfg.firma=v.trim(); });
+  else { if(!v.trim()){ toast('El mensaje no puede quedar vacío'); return; } commit('Mensaje guardado',()=>{ S.cfg.tpl={...S.cfg.tpl,[k]:v}; }); }
+  ui.sheet=null; clearForm('ajv'); render(); };
 
 /* ---------- WhatsApp: pedir el número una vez y firmar los mensajes ---------- */
 // Una app web no puede leer los contactos del teléfono; por eso el número se guarda en la ficha del cliente.
@@ -1647,14 +1747,15 @@ A.wa=function(d,el,e){ const k=S.clientes.find(x=>x.id===d.id); if(!k) return 'f
   if(e) e.preventDefault();
   let text=''; try{ text=new URL(el.href).searchParams.get('text')||''; }catch(err){}
   ui.sheet={t:'waTel',id:k.id,text}; clearForm('wtel'); render(); };
-function vWaTel(s){ const k=S.clientes.find(x=>x.id===s.id), tel=normTel(V('wtel')), ok=tel.length===11;
+function vWaTel(s){ const k=S.clientes.find(x=>x.id===s.id); if(!k) return ''; const tel=normTel(V('wtel')), ok=tel.length>=11;
   return `<div class="grab"></div><h2 style="margin:0">WhatsApp de ${esc(k.nombre)}</h2>
   <p class="note" style="margin:0">Lo guardo en su ficha y la próxima vez se abre su chat directo.</p>
   <input id="wtel" data-k data-r inputmode="tel" placeholder="9 1234 5678" value="${esc(V('wtel'))}" style="font-size:18px">
-  <div class="acts"><a class="btn ghost" href="${waHref({},s.text)}" target="_blank" rel="noopener" data-a="waSin">Elegir en WhatsApp</a><button class="btn" data-a="waTelSave" ${ok?'':'disabled'}>Guardar y abrir chat</button></div>
+  ${ok?`<span class="s">Queda como +${tel.slice(0,2)} ${tel.slice(2,3)} ${tel.slice(3,7)} ${tel.slice(7)} ✓</span>`:''}
+  <div class="acts"><a class="btn ghost" href="${waHref({},s.text)}" target="_blank" rel="noopener" data-a="waSin" data-id="${k.id}">Mandar sin guardar número</a><button class="btn" data-a="waTelSave" ${ok?'':'disabled'}>Guardar y abrir chat</button></div>
   <button class="btn ghost block" data-a="closeSheet">Cancelar</button>`; }
-A.waSin=()=>{ ui.sheet=null; setTimeout(render,300); return 'follow'; };
-A.waTelSave=()=>{ const s=ui.sheet, k=S.clientes.find(x=>x.id===s.id), tel=normTel(V('wtel')); if(tel.length!==11){ toast('Revisa el número: 9 dígitos, empezando con 9'); return; }
+A.waSin=d=>{ const k=S.clientes.find(x=>x.id===d.id); if(k){ k.ult=today(); save(); } ui.sheet=null; setTimeout(render,300); return 'follow'; };
+A.waTelSave=()=>{ const s=ui.sheet, k=S.clientes.find(x=>x.id===s.id), tel=normTel(V('wtel')); if(tel.length<11){ toast('Revisa el número: 9 dígitos, empezando con 9'); return; }
   ui.sheet=null; clearForm('wtel'); window.open(waHref({tel},s.text),'_blank');
   commit(`WhatsApp de ${k.nombre} guardado`, ()=>{ k.tel=tel; k.ult=today(); }); };
 
