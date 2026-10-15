@@ -1432,6 +1432,120 @@ function vOlvido(head,next,prev){
   actionbar(`<button class="btn ghost" data-a="cStep" data-v="${prev}">Atrás</button><button class="btn" data-a="cStep" data-v="${next}">Siguiente</button>`);
 }
 
+/* ===================== Anotar hablando (IA) =====================
+   Mati dice o escribe lo que pasó; la función "pasno-ia" devuelve una propuesta;
+   cada propuesta abre el formulario normal ya lleno y él confirma con Guardar. La IA nunca guarda sola. */
+const IA_EJEMPLOS=['vendí un light blue a la tía ana en 3 cuotas','la caro me pagó 40 lucas','pagué 6 lucas de envío a santiago','pasé 50 lucas al ahorro'];
+function vIA(){
+  const r=ui.ia||{}, busy=r.estado==='pensando';
+  const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+  return `<div class="topbar"><button class="back" data-a="iaClose" aria-label="Cerrar">✕</button><h2>Anotar hablando</h2></div>
+  <p class="note" style="margin-top:0">Cuéntalo como se lo dirías a alguien. Te muestro qué voy a anotar y tú confirmas.</p>
+  <div class="field"><textarea id="iat" data-k placeholder="Ej: vendí un light blue a la tía ana en 3 cuotas y pagué 5 lucas de envío" style="min-height:110px;font-size:16px">${esc(V('iat'))}</textarea></div>
+  <div class="acts" style="margin-top:8px">${SR?`<button class="btn ghost" data-a="iaMic">${ui.iaMic?'■ Detener':'🎙 Hablar'}</button>`:'<span class="s" style="align-self:center">Para dictar, toca el micrófono del teclado.</span>'}<button class="btn" data-a="iaGo" ${busy?'disabled':''}>${busy?'Pensando…':'Interpretar'}</button></div>
+  ${!V('iat')&&!r.acciones?`<div class="chips" style="margin-top:10px">${IA_EJEMPLOS.map(e=>`<div class="seg"><button data-a="iaEj" data-v="${esc(e)}">${esc(e)}</button></div>`).join('')}</div>`:''}
+  ${r.error?`<div class="warnbox" style="margin-top:12px">${esc(r.error)}</div>`:''}
+  ${(r.preguntas||[]).length?`<div class="warnbox" style="margin-top:12px">${r.preguntas.map(esc).join('<br>')}<br><span class="s">Corrige el texto y vuelve a interpretar, o ajústalo en el formulario.</span></div>`:''}
+  ${(r.acciones||[]).length?`<h3>Te propongo anotar</h3><div class="list">${r.acciones.map((a,i)=>`<div class="row"><div class="main"><div class="t" style="white-space:normal">${esc(a.resumen)}</div><div class="s">${{venta:'Venta',pago:'Pago',gasto:'Gasto',movimiento:'Movimiento'}[a.tipo]}${a._aviso?' · <span class="chip w">'+esc(a._aviso)+'</span>':''}</div></div>${a._hecho?'<span class="chip ok">✓ anotado</span>':`<button class="btn sm" data-a="iaAbrir" data-i="${i}">Revisar</button>`}</div>`).join('')}</div>
+    <p class="note">Cada una abre el formulario de siempre con los datos listos. Revisa y toca Guardar.</p>`:''}`;
+}
+SCREENS.f_ia=vIA;
+const _vAddSheet2=vAddSheet;
+vAddSheet=function(){ return _vAddSheet2().replace('<button class="addrow" data-a="flow" data-f="f_vender">',
+  `<button class="addrow" data-a="flow" data-f="f_ia"><span class="ic gr"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></span><span class="main"><span class="t" style="display:block">✨ Anotar hablando</span><span class="s">O escribiendo: "vendí un light blue a la tía ana en 3 cuotas"</span></span></button>
+  <button class="addrow" data-a="flow" data-f="f_vender">`); };
+const _startFlow2=startFlow;
+startFlow=function(f,extra={}){ if(f==='f_ia'){ if(!tab.startsWith('f_')) ui.iaFrom=tab; ui.sheet=null; if(!ui.ia||ui.ia.done) { ui.ia={}; clearForm('iat'); } tab=f; render(true); return; } return _startFlow2(f,extra); };
+
+// valida la propuesta contra los datos reales antes de mostrarla
+function iaCheck(a){
+  if(a.cliente_id&&!S.clientes.some(k=>k.id===a.cliente_id)){ a.cliente_id=null; a._aviso='revisa el cliente'; }
+  a.productos=(a.productos||[]).filter(p=>{ const b=S.bottles.find(x=>x.id===p.ref); return b&&(b.estado==='Stock'||b.estado==='En camino'||b.estado==='Abierta'); });
+  if(a.tipo==='venta'&&!a.productos.length) a._aviso='elige los perfumes';
+  if(a.tipo==='pago'&&!a.cliente_id) a._aviso='elige quién pagó';
+  return a;
+}
+Object.assign(A,{
+  iaClose(){ if(ui.iaMic) ui.iaMic.stop(); if(ui.ia&&ui.ia.acciones&&ui.ia.acciones.every(a=>a._hecho)) ui.ia.done=true; tab=ui.iaFrom||'inicio'; render(true); },
+  iaEj(d){ FORM.iat=d.v; render(); },
+  iaMic(){ const SR=window.SpeechRecognition||window.webkitSpeechRecognition; if(!SR) return;
+    if(ui.iaMic){ ui.iaMic.stop(); return; }
+    const rec=new SR(); rec.lang='es-CL'; rec.interimResults=true; rec.continuous=true; const base=V('iat'); let fin='';
+    rec.onresult=e=>{ let tmp=''; for(let i=e.resultIndex;i<e.results.length;i++){ const t=e.results[i][0].transcript; if(e.results[i].isFinal) fin+=t+' '; else tmp+=t; } FORM.iat=(base?base+' ':'')+fin+tmp; const el=$('#iat'); if(el) el.value=FORM.iat; };
+    rec.onend=()=>{ ui.iaMic=null; render(); }; rec.onerror=()=>{ ui.iaMic=null; render(); };
+    ui.iaMic=rec; rec.start(); render(); },
+  async iaGo(){ const texto=V('iat').trim(); if(!texto){ toast('Escribe o di qué quieres anotar'); return; }
+    if(ui.iaMic) ui.iaMic.stop();
+    if(!CLOUD||!sb){ ui.ia={error:'La IA funciona solo con la app conectada (no en modo prueba).'}; render(); return; }
+    if(!navigator.onLine){ ui.ia={error:'Sin conexión: usa los formularios normales.'}; render(); return; }
+    ui.ia={estado:'pensando'}; render();
+    try{ const {data,error}=await sb.functions.invoke('pasno-ia',{body:{texto,hoy:today()}});
+      if(error){ let msg='No pude conectarme con la IA. Intenta de nuevo.'; try{ const b=await error.context.json(); if(b&&b.error) msg=b.error; }catch(e){} ui.ia={error:msg}; }
+      else ui.ia={acciones:(data.acciones||[]).map(iaCheck),preguntas:data.preguntas||[]};
+    }catch(e){ ui.ia={error:'No pude conectarme con la IA. Intenta de nuevo.'}; }
+    if(ui.ia.acciones&&!ui.ia.acciones.length&&!(ui.ia.preguntas||[]).length) ui.ia.error='No encontré nada para anotar. Prueba contándolo de otra forma.';
+    render(); },
+  iaAbrir(d){ const a=ui.ia.acciones[+d.i]; ui.iaCur=+d.i;
+    if(a.tipo==='venta'){ const pk={}; for(const p of a.productos){ const b=S.bottles.find(x=>x.id===p.ref); if(b.estado==='Abierta'){ const k=b.id+'|'+(p.tamano_ml===10?10:5); pk[k]=(pk[k]||0)+Math.max(1,p.cantidad); } else pk[b.id]=1; }
+      startFlow('f_vender',{picks:pk,step:Object.keys(pk).length?(a.cliente_id||a.cliente_nuevo?3:2):1});
+      if(a.cliente_id) ui.cliPick=a.cliente_id; else if(a.cliente_nuevo){ ui.newCli=true; FORM.ncn=titleCase(a.cliente_nuevo); }
+      if(a.total) FORM.stot=a.total.toLocaleString('es-CL'); if(a.cuotas) ui.n=Math.max(1,a.cuotas); if(a.pie){ ui.pieOn=true; FORM.spie=String(a.pie); }
+      if(a.fecha){ FORM.sf=a.fecha; ui.showFecha=true; } if(a.medio) ui.pMedio=a.medio;
+      if(a.entrega) ui.entrega=a.entrega; if(a.envio_monto!=null){ ui.entrega='envio'; FORM.senv=String(a.envio_monto); } if(a.envio_paga) ui.envPaga=a.envio_paga;
+      render(true); }
+    else if(a.tipo==='pago'){ startFlow('f_pago',{id:a.cliente_id||null}); if(a.monto) FORM.pm=a.monto.toLocaleString('es-CL'); if(a.fecha) FORM.pf=a.fecha; if(a.medio) ui.pMedio=a.medio; render(true); }
+    else if(a.tipo==='gasto'){ startFlow('f_gasto'); if(a.gasto_categoria) ui.gCat=a.gasto_categoria; if(a.monto) FORM.gm=String(a.monto); if(a.detalle) FORM.gd=a.detalle; if(a.fecha) FORM.gf=a.fecha; render(true); }
+    else if(a.tipo==='movimiento'){ startFlow('f_mov'); if(a.mov_tipo) ui.movT=a.mov_tipo; if(a.monto) FORM.rm=String(a.monto); if(a.detalle) FORM.rd=a.detalle; render(true); }
+    ui.flowFrom='f_ia'; },
+});
+// al guardar una propuesta: marcarla y volver a la lista si quedan otras
+function iaDone(){ if(ui.iaCur==null||!ui.ia||!ui.ia.acciones) return; ui.ia.acciones[ui.iaCur]._hecho=true; ui.iaCur=null;
+  if(ui.ia.acciones.some(a=>!a._hecho)){ tab='f_ia'; ui.sheet=null; render(true); } else { ui.ia.done=true; } }
+for(const k of ['saveSale','paySave','saveGasto','saveMov']){ const f=A[k]; A[k]=function(...args){ const before=S.ventas.length+S.pagos.length+S.gastos.length+S.movs.length; const r=f.apply(this,args); if(S.ventas.length+S.pagos.length+S.gastos.length+S.movs.length>before) iaDone(); return r; }; }
+
+/* ---------- Prueba de la IA: 30 frases a la manera de Mati ---------- */
+// las frases de prueba usan nombres reales de clientes: viven en los datos privados (S.iaTest), no en este código público
+const iaTests=()=>S.iaTest||[];
+function iaGrade(exp,res){
+  const acc=res.acciones||[], errs=[];
+  if(exp.length===1&&exp[0].preg){ const okP=(res.preguntas||[]).length>0&&!acc.some(a=>a.tipo==='venta'&&(a.productos||[]).length); return okP?[]:['debía preguntar porque ese perfume no está en stock']; }
+  if(!exp.length) return acc.length?['no debía anotar nada']:[];
+  if(acc.length<exp.length) return [`propuso ${acc.length} registro(s), se esperaban ${exp.length}`];
+  exp.forEach((e,i)=>{ const a=acc[i]; if(a.tipo!==e.tipo){ errs.push(`tipo ${a.tipo} ≠ ${e.tipo}`); return; }
+    if(e.cli){ const k=S.clientes.find(c=>c.id===a.cliente_id); if(!k||norm(k.nombre)!==norm(e.cli)) errs.push(`cliente ${k?k.nombre:'—'} ≠ ${e.cli}`); }
+    if(e.nuevo&&!a.cliente_nuevo) errs.push('no detectó cliente nuevo');
+    for(const [f,ef] of [['cuotas','cuotas'],['total','total'],['monto','monto'],['pie','pie']]) if(e[ef]!=null&&a[f]!==e[ef]) errs.push(`${f} ${a[f]} ≠ ${e[ef]}`);
+    if(e.cat&&a.gasto_categoria!==e.cat) errs.push(`categoría ${a.gasto_categoria} ≠ ${e.cat}`);
+    if(e.mov&&a.mov_tipo!==e.mov) errs.push(`tipo ${a.mov_tipo} ≠ ${e.mov}`);
+    if(e.env&&a.envio_monto!==e.env) errs.push(`envío ${a.envio_monto} ≠ ${e.env}`);
+  });
+  return errs;
+}
+function vIATest(){
+  const T=ui.iaTest||{};
+  const done=(T.res||[]).length, ok=(T.res||[]).filter(r=>!r.errs.length).length, tin=(T.res||[]).reduce((a,r)=>a+(r.u?r.u.input_tokens:0),0), tout=(T.res||[]).reduce((a,r)=>a+(r.u?r.u.output_tokens:0),0);
+  const usd=tin/1e6*4+tout/1e6*20;
+  return `<div class="topbar"><button class="back" data-a="go" data-to="ajustes" aria-label="Volver">←</button><h2>Probar la IA</h2></div>
+  <p class="note" style="margin-top:0">Manda ${iaTests().length} frases escritas como las diría Mati y revisa si la IA propone lo correcto. No guarda nada. Usa la IA ${iaTests().length} veces (aprox. USD 0,50–1 con Claude Opus 5.5).</p>
+  ${!T.running&&!done?`<button class="btn block" data-a="iaTestRun">Empezar la prueba</button>`:''}
+  ${done?`<div class="card" style="margin-top:12px"><span class="lab">Resultado${T.running?' (en curso)':''}</span><span style="font-size:22px;font-weight:700">${ok} de ${done} correctas</span><span class="s">${tin.toLocaleString('es-CL')} tokens de entrada · ${tout.toLocaleString('es-CL')} de salida · costo aprox. USD ${usd.toFixed(3)}</span></div>
+  <div class="list" style="margin-top:12px">${T.res.map(r=>`<div class="row"><div class="main"><div class="t" style="white-space:normal">${r.errs.length?'✗':'✓'} ${esc(r.t)}</div><div class="s" style="white-space:normal">${r.errs.length?esc(r.errs.join(' · ')):esc((r.out.acciones||[]).map(a=>a.resumen).join(' / ')||(r.out.preguntas||[]).join(' ')||'sin registros')}</div></div></div>`).join('')}</div>`:''}
+  ${T.running?'<p class="note">Probando… puedes dejar esta pantalla abierta.</p>':''}`;
+}
+SCREENS.iatest=vIATest;
+A.iaTestOpen=()=>{ goTo('iatest'); };
+A.iaTestRun=async()=>{ if(!CLOUD||!sb){ toast('La prueba funciona solo con la app conectada'); return; }
+  ui.iaTest={running:true,res:[]}; render();
+  for(const [t,exp] of iaTests()){
+    let out={}, u=null;
+    try{ const {data,error}=await sb.functions.invoke('pasno-ia',{body:{texto:t,hoy:today()}}); if(error){ let m='error'; try{ m=(await error.context.json()).error; }catch(e){} out={error:m}; } else { out=data; u=data.usage; } }catch(e){ out={error:'sin conexión'}; }
+    const errs=out.error?[out.error]:iaGrade(exp,out); ui.iaTest.res.push({t,out,errs,u}); if(tab==='iatest') render();
+  }
+  ui.iaTest.running=false; if(tab==='iatest') render(); };
+const _vAjustes2=vAjustes;
+vAjustes=function(){ return _vAjustes2().replace('<button class="btn ghost" data-a="install">',`${CLOUD&&(S.iaTest||[]).length?'<button class="btn ghost" data-a="iaTestOpen">✨ Probar la IA con '+S.iaTest.length+' frases</button>':''}<button class="btn ghost" data-a="install">`); };
+SCREENS.ajustes=vAjustes;
+
 /* ---------- events ---------- */
 document.addEventListener('click', e=>{
   const el=e.target.closest('[data-a]'); if(!el) return;
