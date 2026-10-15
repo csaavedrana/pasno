@@ -890,6 +890,7 @@ function render(top){
     else if(s.t==='pw') inner=(typeof vPwSheet==='function')?vPwSheet(ui.pwErr):'';
     else if(s.t==='consVend'||s.t==='consDev') inner=(typeof vConsSheet==='function')?vConsSheet(s):'';
     else if(s.t==='gastoQuick') inner=vGastoQuick(s);
+    else if(s.t==='waTel') inner=(typeof vWaTel==='function')?vWaTel(s):'';
     else if(s.t==='consPremio') inner=(typeof vPremioSheet==='function')?vPremioSheet(s):'';
     if(!inner){ ui.sheet=null; sh.hidden=true; sh.innerHTML=''; } else { sh.innerHTML=`<div class="panel" role="dialog" aria-modal="true">${inner}</div>`; sh.hidden=false; } }
   else { sh.hidden=true; sh.innerHTML=''; }
@@ -1116,8 +1117,8 @@ function vShareSheet(s){
   return `<div class="grab"></div><h2 style="margin:0">${s.k==='venta'?'Resumen para '+esc(saludo(k.nombre)):'Lista de stock'}</h2>
   <p class="note" style="margin:0">Puedes editar el texto antes de mandarlo.</p>
   <textarea id="shareTxt" data-k style="min-height:240px;font-size:14px">${esc(txt)}</textarea>
-  <div class="acts"><button class="btn ghost" data-a="copyShare">Copiar</button><a class="btn wa" id="shareWa" href="${waHref(k||{},txt)}" target="_blank" rel="noopener">Abrir WhatsApp</a></div>
-  ${k&&!k.tel?'<span class="s">No tiene teléfono guardado: WhatsApp te pedirá elegir el chat.</span>':''}
+  <div class="acts"><button class="btn ghost" data-a="copyShare">Copiar</button><a class="btn wa" id="shareWa" href="${waHref(k||{},txt)}" target="_blank" rel="noopener" ${k?`data-a="wa" data-id="${k.id}"`:''}>Abrir WhatsApp</a></div>
+  ${k&&!k.tel?'<span class="s">No tiene WhatsApp guardado: te lo pido al abrir.</span>':''}
   <button class="btn ghost block" data-a="closeSheet">Cerrar</button>`;
 }
 A.share=d=>{ ui.sheet={t:'share',k:d.k,id:d.id}; clearForm('shareTxt'); render(); };
@@ -1629,10 +1630,33 @@ vAjustes=function(){ const nm=S.iaMem?S.iaMem.alias.length+S.iaMem.notas.length:
 SCREENS.ajustes=vAjustes;
 
 // versión visible al final de Ajustes, para saber si el teléfono ya tiene la última
-const APP_VER='14-10 23:56';
+const APP_VER='15-10 00:01';
 const _vAjustes3=vAjustes;
 vAjustes=function(){ return _vAjustes3()+`<p class="note" style="text-align:center;margin-top:18px">Versión ${APP_VER}</p>`; };
 SCREENS.ajustes=vAjustes;
+
+/* ---------- WhatsApp: pedir el número una vez y firmar los mensajes ---------- */
+// Una app web no puede leer los contactos del teléfono; por eso el número se guarda en la ficha del cliente.
+const firma=()=>(S.cfg.firma==null?'Pasnó Perfumes':S.cfg.firma).trim();
+const conFirma=txt=>{ const f=firma(); return f&&!txt.includes(f)?`${txt}\n\n${f}`:txt; };
+const _waText=waText; waText=function(g){ return conFirma(_waText(g)); };
+const _receiptText=receiptText; receiptText=function(v){ return conFirma(_receiptText(v)); };
+const _aWa=A.wa;
+A.wa=function(d,el,e){ const k=S.clientes.find(x=>x.id===d.id); if(!k) return 'follow';
+  if(k.tel) return _aWa(d,el,e);
+  if(e) e.preventDefault();
+  let text=''; try{ text=new URL(el.href).searchParams.get('text')||''; }catch(err){}
+  ui.sheet={t:'waTel',id:k.id,text}; clearForm('wtel'); render(); };
+function vWaTel(s){ const k=S.clientes.find(x=>x.id===s.id), tel=normTel(V('wtel')), ok=tel.length===11;
+  return `<div class="grab"></div><h2 style="margin:0">WhatsApp de ${esc(k.nombre)}</h2>
+  <p class="note" style="margin:0">Lo guardo en su ficha y la próxima vez se abre su chat directo.</p>
+  <input id="wtel" data-k data-r inputmode="tel" placeholder="9 1234 5678" value="${esc(V('wtel'))}" style="font-size:18px">
+  <div class="acts"><a class="btn ghost" href="${waHref({},s.text)}" target="_blank" rel="noopener" data-a="waSin">Elegir en WhatsApp</a><button class="btn" data-a="waTelSave" ${ok?'':'disabled'}>Guardar y abrir chat</button></div>
+  <button class="btn ghost block" data-a="closeSheet">Cancelar</button>`; }
+A.waSin=()=>{ ui.sheet=null; setTimeout(render,300); return 'follow'; };
+A.waTelSave=()=>{ const s=ui.sheet, k=S.clientes.find(x=>x.id===s.id), tel=normTel(V('wtel')); if(tel.length!==11){ toast('Revisa el número: 9 dígitos, empezando con 9'); return; }
+  ui.sheet=null; clearForm('wtel'); window.open(waHref({tel},s.text),'_blank');
+  commit(`WhatsApp de ${k.nombre} guardado`, ()=>{ k.tel=tel; k.ult=today(); }); };
 
 /* ---------- events ---------- */
 document.addEventListener('click', e=>{
