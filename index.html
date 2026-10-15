@@ -284,10 +284,11 @@ function byClient(list){ const m=new Map(), t=today();
   return [...m.values()].sort((a,b)=>b.vencN-a.vencN || (a.next||'9').localeCompare(b.next||'9') || b.total-a.total); }
 
 /* decants: la botella abierta se lleva en "decants de 5 ml" (un 10 ml cuenta como 2) */
-function decStats(b){ let u5=0,u10=0,ingreso=0,costo=0;
+function decStats(b){ let u5=0,u10=0,ingreso=0,costo=0,f5=0,f10=0;
   for(const v of S.ventas) for(const i of v.items) if(i.t==='d'&&i.ref===b.id){ if(i.size===10) u10++; else u5++; ingreso+=i.precio; costo+=i.costo; }
-  const usados=u5+u10*2, est=b.dec?b.dec.est:0;
-  return {u5,u10,usados,quedan:Math.max(0,est-usados),ingreso,costo,resto:Math.max(0,b.cost-costo)}; }
+  for(const g of (S.consignas||[])) for(const i of g.items) if(i.t==='d'&&i.ref===b.id&&i.estado==='fuera'){ if(i.size===10) f10++; else f5++; costo+=i.costo; }
+  const usados=u5+u10*2+f5+f10*2, est=b.dec?b.dec.est:0;
+  return {u5,u10,f5,f10,usados,quedan:Math.max(0,est-usados),ingreso,costo,resto:Math.max(0,b.cost-costo)}; }
 // costo de un decant: parte proporcional de la botella, sin pasarse de lo que queda por cubrir
 const decCost = (b,u,yaCargado=decStats(b).costo) => Math.min(Math.round(u*b.cost/Math.max(1,b.dec.est)), Math.max(0,b.cost-yaCargado));
 
@@ -303,10 +304,10 @@ function calc(){
   const abiertas=S.bottles.filter(b=>b.estado==='Abierta'), abiertasVal=abiertas.reduce((a,b)=>a+decStats(b).resto,0);
   const agotadas=S.bottles.filter(b=>b.estado==='Agotada');
   const ajusteDec=agotadas.reduce((a,b)=>a+(b.dec.ajuste||0),0), ajusteDecMes=agotadas.filter(b=>(b.dec.cerrada||'').slice(0,7)===m).reduce((a,b)=>a+(b.dec.ajuste||0),0);
-  const regalos=sumB(b=>b.estado==='Regalo'), perdidas=sumB(b=>b.estado==='Pérdida');
+  const regalos=sumB(b=>b.estado==='Regalo'), perdidas=sumB(b=>b.estado==='Pérdida'), comis=sumB(b=>b.estado==='Comisión'), comisMes=sumB(b=>b.estado==='Comisión'&&(b.fSalida||'').slice(0,7)===m);
   const regalosMes=sumB(b=>b.estado==='Regalo' && (b.fSalida||'').slice(0,7)===m), perdidasMes=sumB(b=>b.estado==='Pérdida'&&(b.fSalida||'').slice(0,7)===m);
   const gastos=S.gastos.reduce((a,g)=>a+g.monto,0), gastosMes=S.gastos.filter(g=>(g.fecha||'').slice(0,7)===m).reduce((a,g)=>a+g.monto,0);
-  const bruta=ventas-costo, neta=bruta-regalos-perdidas-gastos-ajusteDec-incobrable, netaMes=ganMes-gastosMes-regalosMes-perdidasMes-ajusteDecMes;
+  const bruta=ventas-costo, neta=bruta-regalos-perdidas-comis-gastos-ajusteDec-incobrable, netaMes=ganMes-gastosMes-regalosMes-perdidasMes-comisMes-ajusteDecMes;
   const pend=S.deudas.filter(d=>!d.pagado).sort((a,b)=>a.vence.localeCompare(b.vence));
   const deuda=pend.reduce((a,d)=>a+d.monto,0);
   const aportes=(S.cfg.capital||0)+S.movs.filter(x=>x.tipo==='Aporte de capital').reduce((a,x)=>a+x.monto,0);
@@ -314,9 +315,10 @@ function calc(){
   const cobradoMes=S.pagos.filter(p=>(p.fecha||'').slice(0,7)===m&&p.tipo!=='favor').reduce((a,p)=>a+p.monto,0);
   const favor=S.clientes.reduce((a,k)=>a+(k.favor||0),0);
   const K=S.saldos[S.saldos.length-1]||null, caja=K?(K.banco||0)+(K.ahorro||0)+(K.efectivo||0):0;
-  const stock=stockB+camino+abiertasVal;
+  const consigItems=(S.consignas||[]).flatMap(g=>g.items.filter(i=>i.estado==='fuera')), consigVal=consigItems.reduce((a,i)=>a+i.costo,0), consigPrecio=consigItems.reduce((a,i)=>a+i.precio,0);
+  const stock=stockB+camino+abiertasVal+consigVal;
   const segunPlata = caja + stock + revisar + porCobrar + porConf - deuda - favor - aportes + retiros;
-  return {porCobrar,vencido,porConf,incobrable,ventas,costo,bruta,neta,netaMes,margen:ventas?bruta/ventas:0,ventasMes,ganMes,gastosMes,stockB,camino,revisar,abiertasVal,stock,
+  return {consigVal,consigPrecio,nConsig:consigItems.length,porCobrar,vencido,porConf,incobrable,ventas,costo,bruta,neta,netaMes,margen:ventas?bruta/ventas:0,ventasMes,ganMes,gastosMes,stockB,camino,revisar,abiertasVal,stock,
     nStock:cntB('Stock'),nCamino:cntB('En camino'),nRevisar:cntB('Revisar'),nAbiertas:abiertas.length,nPorEntregar:S.bottles.filter(b=>b.porEntregar).length,
     regalos,perdidas,regalosMes,gastos,deuda,proxDeuda:pend[0]||null,aportes,retiros,cobradoMes,favor,K,caja,segunPlata};
 }
@@ -878,6 +880,8 @@ function render(top){
     else if(s.t==='hist') inner=vHistSheet(s.k,s.i);
     else if(s.t==='share') inner=vShareSheet(s);
     else if(s.t==='pw') inner=(typeof vPwSheet==='function')?vPwSheet(ui.pwErr):'';
+    else if(s.t==='consVend'||s.t==='consDev') inner=(typeof vConsSheet==='function')?vConsSheet(s):'';
+    else if(s.t==='consPremio') inner=(typeof vPremioSheet==='function')?vPremioSheet(s):'';
     if(!inner){ ui.sheet=null; sh.hidden=true; sh.innerHTML=''; } else { sh.innerHTML=`<div class="panel" role="dialog" aria-modal="true">${inner}</div>`; sh.hidden=false; } }
   else { sh.hidden=true; sh.innerHTML=''; }
   if(top) window.scrollTo(0,0);
@@ -1231,6 +1235,120 @@ A.pwSave=async()=>{ const a=$('#pw1').value, b=$('#pw2').value;
   const {error}=await sb.auth.updateUser({password:a});
   if(error) return fail(/same|different/i.test(error.message)?'Esa ya es tu clave. Elige una distinta.':/weak|short|least/i.test(error.message)?'Esa clave es muy débil. Prueba una más larga.':'No pude cambiarla. Revisa la señal e intenta de nuevo.');
   ui.sheet=null; render(); toast('Clave cambiada'); };
+
+/* ===================== Consignación: productos que vende otra persona =====================
+   Los productos siguen siendo de Pasnó (valen su costo en stock) hasta que el vendedor avisa que los vendió.
+   Al vender: se crea la venta a nombre del vendedor y él queda debiendo esa plata (aparece en Cobrar).
+   Premio: si el vendedor vende todo lo que se le mandó, se le entrega un perfume que se elige en ese momento (cuenta como costo). */
+const vendedores = () => (S.vendedores=S.vendedores||[]);
+const consignas = () => (S.consignas=S.consignas||[]);
+const vendOf = id => vendedores().find(v=>v.id===id);
+const consItems = vid => consignas().filter(g=>g.vendedor===vid).flatMap(g=>g.items.map(i=>({...i,_g:g.id})));
+function vendClient(v){ let k=S.clientes.find(c=>c.id===v.cliente); if(!k){ k={id:uid('K'),nombre:v.nombre+' (vendedor)',tel:v.tel||'',dia:null,notas:'Vende por consignación',ult:null,favor:0}; S.clientes.push(k); v.cliente=k.id; } return k; }
+
+function vConsigna(){
+  const vs=vendedores();
+  if(!vs.length) return `<div class="card" style="margin-top:12px"><span class="t">Nadie vendiendo por ti todavía</span><span class="s">Cuando le pases decants o perfumes a alguien para que los venda, anótalo con el botón + → Mandé a vender.</span></div>`;
+  return vs.map(v=>{ const its=consItems(v.id), fuera=its.filter(i=>i.estado==='fuera'), vend=its.filter(i=>i.estado==='vendido'), total=its.filter(i=>i.estado!=='devuelto');
+    const todo=total.length&&!fuera.length, k=S.clientes.find(c=>c.id===v.cliente), deb=k?debtOf(k.id):0;
+    return `<div class="card" style="margin-top:12px">
+      <div class="row" style="padding:0;border:0"><div class="main"><div class="t">${esc(v.nombre)}</div><div class="s">${fuera.length} producto${fuera.length===1?'':'s'} en su poder · se venden en ${clp(fuera.reduce((a,i)=>a+i.precio,0))}</div></div>${deb?`<span class="chip n">te debe ${clp(deb)}</span>`:''}</div>
+      ${v.premio?`<div><div class="prog"><span style="width:${total.length?vend.length/total.length*100:0}%;background:var(--good)"></span></div><span class="s">Premio si vende todo: ${esc(v.premio.desc)} · ${vend.length} de ${total.length} vendidos${v.premio.entregado?' · <b>entregado</b>':''}</span></div>`:''}
+      <div class="list">${fuera.map(i=>`<div class="row"><div class="main"><div class="t">${esc(i.nombre)}</div><div class="s">mandado el ${fmtDate(consignas().find(g=>g.id===i._g).fecha)}</div></div><span class="amt">${clp(i.precio)}</span></div>`).join('')||'<div class="empty">No tiene productos tuyos ahora.</div>'}</div>
+      <div class="acts">${fuera.length?`<button class="btn paid" data-a="consVend" data-id="${v.id}">Vendió…</button><button class="btn ghost" data-a="consDev" data-id="${v.id}">Me devolvió…</button>`:''}<button class="btn ghost" data-a="flow" data-f="f_consigna" data-id="${v.id}">Mandar más</button>${deb&&k?`<button class="btn ghost" data-a="openCli" data-id="${k.id}">Cobrarle</button>`:''}</div>
+      ${v.premio&&todo&&!v.premio.entregado?`<div class="okbox">¡Vendió todo! Le toca su premio: ${esc(v.premio.desc)}. <button class="linkbtn" data-a="consPremio" data-id="${v.id}">Entregar premio</button></div>`:''}
+      ${vend.length?`<p class="note" style="margin:0">Vendidos: ${vend.length} por ${clp(vend.reduce((a,i)=>a+(i.vendidoEn||i.precio),0))}. Lo que te debe aparece en Cobrar.</p>`:''}
+    </div>`; }).join('');
+}
+function vConsSheet(s){
+  const v=vendOf(s.id); if(!v) return '';
+  const fuera=consItems(v.id).filter(i=>i.estado==='fuera'), vendiendo=s.t==='consVend';
+  const sel=ui.consSel||{}, n=fuera.filter(i=>sel[i.id]).length, tot=fuera.filter(i=>sel[i.id]).reduce((a,i)=>a+num(V('cp_'+i.id,String(i.precio))),0);
+  return `<div class="grab"></div><h2 style="margin:0">${vendiendo?'¿Qué vendió '+esc(v.nombre)+'?':'¿Qué te devolvió?'}</h2>
+  <p class="note" style="margin:0">${vendiendo?'Marca lo que vendió. Si lo vendió a otro precio, cámbialo. Te queda debiendo ese total.':'Lo que marques vuelve a tu stock.'}</p>
+  <div class="list" style="max-height:340px;overflow:auto">${fuera.map(i=>`<div class="row"><label class="radio" style="flex:1;align-items:center"><input type="checkbox" data-a="consT" data-id="${i.id}" ${sel[i.id]?'checked':''}><span>${esc(i.nombre)}</span></label>${vendiendo?`<input id="cp_${i.id}" data-k data-r inputmode="numeric" style="width:96px;padding:8px" value="${esc(V('cp_'+i.id,i.precio.toLocaleString('es-CL')))}">`:`<span class="amt">${clp(i.precio)}</span>`}</div>`).join('')}</div>
+  <div class="acts"><button class="btn ghost" data-a="consAll" data-id="${v.id}">${n===fuera.length?'Ninguno':'Todos'}</button><button class="btn ${vendiendo?'paid':''}" data-a="${vendiendo?'consVendSave':'consDevSave'}" data-id="${v.id}" ${n?'':'disabled'}>${vendiendo?`Vendió ${n} · ${clp(tot)}`:`Volvieron ${n}`}</button></div>
+  <button class="btn ghost block" data-a="closeSheet">Cancelar</button>`;
+}
+function vConsignaFlow(){
+  const vs=vendedores(), vid=V('cv',ui.consV||(vs[0]&&vs[0].id)||'new'), isNew=vid==='new';
+  const ab=S.bottles.filter(b=>b.estado==='Abierta'), bs=S.bottles.filter(b=>b.estado==='Stock');
+  const ch=Object.entries(picks).filter(([,q])=>q>0);
+  const total=ch.reduce((a,[key,q])=>{ if(key.includes('|')){ const [id,sz]=key.split('|'), b=S.bottles.find(x=>x.id===id); return a+q*(+sz===10?b.dec.p10:b.dec.p5); } const b=S.bottles.find(x=>x.id===key); return a+(b?b.price:0); },0);
+  const nUnits=ch.reduce((a,[,q])=>a+q,0);
+  const stp=(key,label,price)=>`<div class="pick" style="border:0;padding:4px 0;min-height:0"><div class="main">${label}</div><span class="amt" style="font-size:13px">${clp(price)}</span><div class="step"><button data-a="dec" data-id="${key}" aria-label="Quitar uno">−</button><b>${picks[key]||0}</b><button data-a="inc" data-id="${key}" aria-label="Agregar uno">+</button></div></div>`;
+  return `${topbar('Mandé a vender','cancel','✕')}
+  <div class="field"><label for="cv">¿A quién?</label><select id="cv" data-k data-r>${vs.map(v=>`<option value="${v.id}" ${vid===v.id?'selected':''}>${esc(v.nombre)}</option>`).join('')}<option value="new" ${isNew?'selected':''}>+ Persona nueva</option></select></div>
+  ${isNew?`<div class="grid2" style="margin-top:10px"><div class="field"><label for="cvn">Nombre</label><input id="cvn" data-k data-r placeholder="Ej: Chico (gimnasio)" value="${esc(V('cvn'))}"></div><div class="field"><label for="cvt">WhatsApp</label><input id="cvt" data-k inputmode="tel" placeholder="9 1234 5678" value="${esc(V('cvt'))}"></div></div>`:''}
+  ${ab.length?`<h3>Decants</h3><div class="list">${ab.map(b=>{ const s=decStats(b); return `<div class="row" style="display:block"><div class="t">${esc(b.name)} <span class="s">· quedan ~${s.quedan} de 5 ml</span></div>${stp(b.id+'|5','5 ml',b.dec.p5)}${b.dec.p10?stp(b.id+'|10','10 ml',b.dec.p10):''}</div>`; }).join('')}</div>`:'<p class="note">Para mandar decants, primero abre la botella en Stock → Abrir para decants.</p>'}
+  <h3>Botellas</h3><div class="list" style="max-height:260px;overflow:auto">${bs.map(b=>`<button class="rowbtn ${picks[b.id]?'on':''}" data-a="${picks[b.id]?'unpick':'pick'}" data-id="${b.id}"><div class="main"><div class="t">${esc(b.name)}</div><div class="s">${b.ml} ml</div></div><span class="amt">${clp(b.price)}</span><span class="chip ${picks[b.id]?'ok':'d'}">${picks[b.id]?'✓':'+'}</span></button>`).join('')||'<div class="empty">Sin botellas en stock.</div>'}</div>
+  ${actionbar(`<button class="btn" data-a="consSave" ${nUnits&&(!isNew||V('cvn').trim())?'':'disabled'}>${nUnits?`Mandar ${nUnits} · ${clp(total)}`:'Elige qué mandaste'}</button>`)}`;
+}
+
+// conectar con las pantallas existentes
+const _vStock=vStock;
+vStock=function(){ const k=calc();
+  return `<div class="topbar"><h2>Stock</h2></div>
+  <div class="seg scroll" role="group" aria-label="Sección"><button data-a="stockSeg" data-seg="stock" ${pressed(ui.stockSeg==='stock')}>Mi stock</button><button data-a="stockSeg" data-seg="pedidos" ${pressed(ui.stockSeg==='pedidos')}>Pedidos${k.deuda?` · debes ${clp(k.deuda)}`:''}</button><button data-a="stockSeg" data-seg="consigna" ${pressed(ui.stockSeg==='consigna')}>Consignación${k.nConsig?' ('+k.nConsig+')':''}</button></div>
+  ${ui.stockSeg==='stock'?vMiStock(k):ui.stockSeg==='pedidos'?vPedidos(k):vConsigna()}`; };
+SCREENS.stock=vStock; SCREENS.f_consigna=vConsignaFlow;
+const _vAddSheet=vAddSheet;
+vAddSheet=function(){ return _vAddSheet().replace('<button class="btn ghost block" data-a="closeSheet">Cancelar</button>',
+  `<button class="addrow" data-a="flow" data-f="f_consigna"><span class="ic am"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 7h11v9H3zM14 10h4l3 3v3h-7z"/><circle cx="7" cy="17.5" r="1.6"/><circle cx="17" cy="17.5" r="1.6"/></svg></span><span class="main"><span class="t" style="display:block">Mandé a vender</span><span class="s">Decants o perfumes que otra persona vende por ti</span></span></button>
+  <button class="btn ghost block" data-a="closeSheet">Cancelar</button>`); };
+const _startFlow=startFlow;
+startFlow=function(f,extra={}){ if(f==='f_consigna'){ ui.flowFrom=tab.startsWith('f_')?ui.flowFrom:tab; ui.sheet=null; picks={}; ui.consV=extra.id||null; clearForm('cv','cvn','cvt'); tab=f; render(true); return; } return _startFlow(f,extra); };
+const _vInicio=vInicio;
+vInicio=function(){ const k=calc(), h=_vInicio(); if(!k.nConsig) return h;
+  const names=[...new Set((S.consignas||[]).flatMap(g=>g.items.filter(i=>i.estado==='fuera').map(()=>vendOf(g.vendedor)?.nombre)))].filter(Boolean).join(', ');
+  return h.replace('<span><i class="dot" style="display:inline-block;background:var(--c-stock);margin-right:6px"></i>En stock (al costo)</span>',
+    `<span><i class="dot" style="display:inline-block;background:var(--c-stock);margin-right:6px"></i>En stock (al costo)<br><span class="s">incluye ${k.nConsig} producto${k.nConsig===1?'':'s'} con ${esc(names)}</span></span>`); };
+SCREENS.inicio=vInicio;
+
+/* acciones */
+Object.assign(A,{
+  consVend(d){ ui.sheet={t:'consVend',id:d.id}; ui.consSel={}; render(); },
+  consDev(d){ ui.sheet={t:'consDev',id:d.id}; ui.consSel={}; render(); },
+  consT(d,el){ ui.consSel[d.id]=el.checked; render(); },
+  consAll(d){ const fuera=consItems(d.id).filter(i=>i.estado==='fuera'), all=fuera.every(i=>ui.consSel[i.id]); ui.consSel=all?{}:Object.fromEntries(fuera.map(i=>[i.id,true])); render(); },
+  consVendSave(d){ const v=vendOf(d.id), its=consItems(v.id).filter(i=>i.estado==='fuera'&&ui.consSel[i.id]); if(!its.length) return;
+    const prices=Object.fromEntries(its.map(i=>[i.id,num(V('cp_'+i.id,String(i.precio)))||i.precio])), T=its.reduce((a,i)=>a+prices[i.id],0);
+    ui.sheet=null; its.forEach(i=>clearForm('cp_'+i.id));
+    const nv=Math.max(S.cfg.nextV||0,...S.ventas.map(x=>+x.id.slice(1)||0),0)+1, id='V'+pad(nv);
+    commit(`${v.nombre} vendió ${its.length}: te debe ${clp(T)}`, ()=>{
+      S.cfg.nextV=nv; const k=vendClient(v), f=today();
+      const items=its.map(i=>({t:i.t,ref:i.ref,size:i.size,u:i.u,nombre:i.nombre,lista:i.precio,precio:prices[i.id],costo:i.costo}));
+      for(const g of consignas()) for(const i of g.items) if(prices[i.id]!=null&&i.estado==='fuera'){ i.estado='vendido'; i.venta=id; i.vendidoEn=prices[i.id]; i.fechaFin=f; if(i.t==='b'){ const b=S.bottles.find(x=>x.id===i.ref); b.estado='Vendido'; b.venta=id; b.fSalida=f; } }
+      S.ventas.push({id,cliente:k.id,fecha:f,vendedor:v.nombre,total:T,pie:0,items,consigna:v.id});
+      S.cuotas.push({id:uid('C'),venta:id,n:1,monto:T,vence:v.cobro==='venta'?f:schedule(f,1,k.dia)[0]}); }); },
+  consDevSave(d){ const v=vendOf(d.id), ids=new Set(consItems(v.id).filter(i=>i.estado==='fuera'&&ui.consSel[i.id]).map(i=>i.id)); if(!ids.size) return; ui.sheet=null;
+    commit(`${ids.size} producto${ids.size>1?'s':''} de vuelta en tu stock`, ()=>{ for(const g of consignas()) for(const i of g.items) if(ids.has(i.id)){ i.estado='devuelto'; i.fechaFin=today(); if(i.t==='b'){ const b=S.bottles.find(x=>x.id===i.ref); if(b) b.estado='Stock'; } } }); },
+  consPremio(d){ ui.sheet={t:'consPremio',id:d.id}; clearForm('prq','prc'); render(); },
+  premioB(d){ const v=vendOf(ui.sheet.id), b=S.bottles.find(x=>x.id===d.id); ui.sheet=null;
+    commit(`Premio entregado a ${v.nombre}: ${b.name}`, ()=>{ v.premio.entregado=today(); b.estado='Comisión'; b.fSalida=today(); b.nota=`Premio de ${v.nombre} por vender todo`; }); },
+  premioCompra(d){ const v=vendOf(ui.sheet.id), c=num(V('prc')); if(!c){ toast('Escribe cuánto te costó'); return; } ui.sheet=null; clearForm('prc');
+    commit(`Premio entregado a ${v.nombre}`, ()=>{ v.premio.entregado=today(); S.gastos.push({fecha:today(),cat:'Comisión',det:`Premio de ${v.nombre}: ${v.premio.desc}`,monto:c}); }); },
+  consSave(){ let vid=V('cv',ui.consV||(vendedores()[0]&&vendedores()[0].id)||'new'); const ch=Object.entries(picks).filter(([,q])=>q>0); if(!ch.length) return;
+    const nombre=V('cvn').trim(), tel=normTel(V('cvt'));
+    commit('Anotado: productos en consignación', ()=>{
+      if(vid==='new'){ const v={id:uid('W'),nombre,tel:tel.length===11?tel:'',cliente:null,premio:null,cobro:'mes'}; vendedores().push(v); vid=v.id; }
+      const g={id:uid('G'),vendedor:vid,fecha:today(),items:[]}; const cargado={};
+      for(const [key,q] of ch){
+        if(key.includes('|')){ const [id,sz]=key.split('|'), b=S.bottles.find(x=>x.id===id), size=+sz, u=size===10?2:1;
+          if(cargado[id]==null) cargado[id]=decStats(b).costo;
+          for(let n=0;n<q;n++){ const c=decCost(b,u,cargado[id]); cargado[id]+=c; g.items.push({id:uid('I'),t:'d',ref:id,size,u,nombre:`${b.name} · ${size} ml`,precio:size===10?b.dec.p10:b.dec.p5,costo:c,estado:'fuera'}); } }
+        else { const b=S.bottles.find(x=>x.id===key); g.items.push({id:uid('I'),t:'b',ref:b.id,nombre:b.name,precio:b.price,costo:b.cost,estado:'fuera'}); b.estado='Consignación'; } }
+      consignas().push(g); });
+    picks={}; ui.stockSeg='consigna'; tab='stock'; render(true); },
+});
+
+function vPremioSheet(s){ const v=vendOf(s.id); if(!v||!v.premio) return '';
+  const q=norm(V('prq',v.premio.desc.split(' ')[0])), bs=S.bottles.filter(b=>b.estado==='Stock'&&(!q||norm(b.name).includes(q)));
+  return `<div class="grab"></div><h2 style="margin:0">Premio de ${esc(v.nombre)}</h2><p class="note" style="margin:0">${esc(v.premio.desc)}. Elige la botella que le diste (cuenta como costo, no como venta).</p>
+  <input id="prq" data-k data-r class="search" placeholder="Buscar en tu stock" value="${esc(V('prq',v.premio.desc.split(' ')[0]))}">
+  <div class="list" style="max-height:240px;overflow:auto">${bs.map(b=>`<button class="rowbtn" data-a="premioB" data-id="${b.id}"><div class="main"><div class="t">${esc(b.name)}</div><div class="s">${b.ml} ml · costo ${clp(b.cost)}</div></div></button>`).join('')||'<div class="empty">No hay una así en stock.</div>'}</div>
+  <div class="field"><label for="prc">¿La compraste aparte? Anota cuánto te costó</label><div style="display:flex;gap:8px"><input id="prc" data-k inputmode="numeric" value="${esc(V('prc'))}"><button class="btn sm" data-a="premioCompra">Guardar</button></div></div>
+  <button class="btn ghost block" data-a="closeSheet">Cancelar</button>`; }
 
 /* ---------- events ---------- */
 document.addEventListener('click', e=>{
