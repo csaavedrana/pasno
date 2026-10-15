@@ -1573,23 +1573,23 @@ function iaGrade(exp,res){
 // el avance se guarda en este teléfono: si se cierra la pantalla, la prueba sigue donde quedó
 const IAT_KEY='pasno-iatest';
 // precio por millón de tokens (entrada, salida) en USD
-const IA_MODELOS={'claude-opus-5-5':['Opus 5.5',4,20],'claude-sonnet-5-5':['Sonnet 5.5',2,10],'claude-haiku-5-5':['Haiku 5.5',0.1,0.5]};
-function iatLoad(){ if(ui.iaTest) return ui.iaTest; try{ const r=JSON.parse(localStorage.getItem(IAT_KEY)||'null'); if(r&&Array.isArray(r.res)) return ui.iaTest={running:false,res:r.res,modelo:r.modelo||'claude-opus-5-5'}; }catch(e){} return ui.iaTest={running:false,res:[],modelo:'claude-opus-5-5'}; }
+const IA_MODELOS={auto:['Automático',0,0],'claude-opus-5-5':['Opus 5.5',4,20],'claude-sonnet-5-5':['Sonnet 5.5',2,10],'claude-haiku-5-5':['Haiku 5.5',0.1,0.5]};
+function iatLoad(){ if(ui.iaTest) return ui.iaTest; try{ const r=JSON.parse(localStorage.getItem(IAT_KEY)||'null'); if(r&&Array.isArray(r.res)) return ui.iaTest={running:false,res:r.res,modelo:r.modelo||'auto'}; }catch(e){} return ui.iaTest={running:false,res:[],modelo:'auto'}; }
 function iatSave(){ try{ localStorage.setItem(IAT_KEY,JSON.stringify({res:ui.iaTest.res,modelo:ui.iaTest.modelo})); }catch(e){} }
 function vIATest(){
   const T=iatLoad(), N=iaTests().length;
   const done=T.res.length, ok=T.res.filter(r=>!r.errs.length).length, tin=T.res.reduce((a,r)=>a+(r.u?r.u.input_tokens:0),0), tout=T.res.reduce((a,r)=>a+(r.u?r.u.output_tokens:0),0);
-  const [mNom,pin,pout]=IA_MODELOS[T.modelo]||IA_MODELOS['claude-opus-5-5'], usd=tin/1e6*pin+tout/1e6*pout;
+  const [mNom,pin,pout]=IA_MODELOS[T.modelo]||IA_MODELOS.auto, usd=T.res.reduce((a,r)=>a+(r.out&&r.out.costo_usd!=null?r.out.costo_usd:(r.u?r.u.input_tokens/1e6*pin+r.u.output_tokens/1e6*pout:0)),0), esc_=T.res.filter(r=>r.out&&r.out.escalado).length;
   const elegir=T.running?'':`<div class="field"><span class="lab">Modelo para ${done&&done<N?'empezar de nuevo':'la prueba'}</span>${segBtns('iaTestModelo',Object.entries(IA_MODELOS).map(([k,v])=>[k,v[0]]),ui.iaTestM||T.modelo)}</div>`;
   const btns=T.running?'':!done?`<button class="btn block" data-a="iaTestRun">Empezar la prueba</button>`
     :`<div class="acts">${done<N&&(ui.iaTestM||T.modelo)===T.modelo?`<button class="btn" data-a="iaTestRun">Continuar (${done} de ${N})</button>`:''}<button class="btn ghost" data-a="iaTestRun" data-v="nueva">Empezar de nuevo</button></div>`;
   return `<div class="topbar"><button class="back" data-a="go" data-to="ajustes" aria-label="Volver">←</button><h2>Probar la IA</h2></div>
-  <p class="note" style="margin-top:0">Manda ${N} frases escritas como las diría Mati y revisa si la IA propone lo correcto. No guarda nada. Usa la IA ${N} veces (aprox. USD 0,50 con Opus, 0,25 con Sonnet, menos de 0,02 con Haiku) y no cuenta para el límite diario de uso normal.</p>
+  <p class="note" style="margin-top:0">Manda ${N} frases escritas como las diría Mati y revisa si la IA propone lo correcto. No guarda nada. Usa la IA ${N} veces (Automático es lo que usa la app: Haiku y, si no tiene sentido, Opus) y no cuenta para el límite diario de uso normal.</p>
   ${elegir}
   ${T.error?`<div class="warnbox" style="margin-top:12px">Se detuvo: ${esc(T.error)}</div>`:''}
   ${btns}
-  ${done?`<div class="card" style="margin-top:12px"><span class="lab">${mNom} · Resultado${T.running?' (en curso)':done<N?' (a medias)':''}</span><span style="font-size:22px;font-weight:700">${ok} de ${done} correctas</span><span class="s">${tin.toLocaleString('es-CL')} tokens de entrada · ${tout.toLocaleString('es-CL')} de salida · costo aprox. USD ${usd.toFixed(3)}</span></div>
-  <div class="list" style="margin-top:12px">${T.res.map(r=>`<div class="row"><div class="main"><div class="t" style="white-space:normal">${r.errs.length?'✗':'✓'} ${esc(r.t)}</div><div class="s" style="white-space:normal">${r.errs.length?esc(r.errs.join(' · ')):esc((r.out.acciones||[]).map(a=>a.resumen).join(' / ')||(r.out.preguntas||[]).join(' ')||'sin registros')}</div></div></div>`).join('')}</div>`:''}
+  ${done?`<div class="card" style="margin-top:12px"><span class="lab">${mNom} · Resultado${T.running?' (en curso)':done<N?' (a medias)':''}</span><span style="font-size:22px;font-weight:700">${ok} de ${done} correctas</span><span class="s">${tin.toLocaleString('es-CL')} tokens de entrada · ${tout.toLocaleString('es-CL')} de salida · costo aprox. USD ${usd.toFixed(3)}${T.modelo==='auto'?` · ${esc_} de ${done} pasaron a Opus`:''}</span></div>
+  <div class="list" style="margin-top:12px">${T.res.map(r=>`<div class="row"><div class="main"><div class="t" style="white-space:normal">${r.errs.length?'✗':'✓'} ${esc(r.t)}</div><div class="s" style="white-space:normal">${r.out&&r.out.escalado?'[Opus: '+esc(r.out.escalado)+'] ':''}${r.errs.length?esc(r.errs.join(' · ')):esc((r.out.acciones||[]).map(a=>a.resumen).join(' / ')||(r.out.preguntas||[]).join(' ')||'sin registros')}</div></div></div>`).join('')}</div>`:''}
   ${T.running?'<p class="note">Probando… si cierras la pantalla, al volver puedes continuar donde quedó.</p>':''}`;
 }
 SCREENS.iatest=vIATest;
@@ -1602,7 +1602,7 @@ A.iaTestRun=async(d)=>{ if(!CLOUD||!sb){ toast('La prueba funciona solo con la a
   const L=iaTests();
   for(let i=T.res.length;i<L.length;i++){ const [t,exp]=L[i];
     let out={}, u=null;
-    try{ const {data,error}=await sb.functions.invoke('pasno-ia',{body:{texto:t,hoy:today(),prueba:true,modelo:T.modelo}}); if(error){ let m='error'; try{ m=(await error.context.json()).error; }catch(e){} out={error:m}; } else { out=data; u=data.usage; } }catch(e){ out={error:'sin conexión'}; }
+    try{ const {data,error}=await sb.functions.invoke('pasno-ia',{body:{texto:t,hoy:today(),prueba:true,...(T.modelo==='auto'?{}:{modelo:T.modelo})}}); if(error){ let m='error'; try{ m=(await error.context.json()).error; }catch(e){} out={error:m}; } else { out=data; u=data.usage; } }catch(e){ out={error:'sin conexión'}; }
     // si falla la conexión o el límite, se detiene sin contar esa frase, para retomarla después
     if(out.error){ T.error=out.error; break; }
     T.res.push({t,out,errs:iaGrade(exp,out),u}); iatSave(); if(tab==='iatest') render();
