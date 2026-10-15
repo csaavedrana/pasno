@@ -1446,10 +1446,14 @@ function vIA(){
   ${!V('iat')&&!r.acciones?`<div class="chips" style="margin-top:10px">${IA_EJEMPLOS.map(e=>`<div class="seg"><button data-a="iaEj" data-v="${esc(e)}">${esc(e)}</button></div>`).join('')}</div>`:''}
   ${r.error?`<div class="warnbox" style="margin-top:12px">${esc(r.error)}</div>`:''}
   ${(r.preguntas||[]).length?`<div class="warnbox" style="margin-top:12px">${r.preguntas.map(esc).join('<br>')}<br><span class="s">Corrige el texto y vuelve a interpretar, o ajústalo en el formulario.</span></div>`:''}
-  ${(r.acciones||[]).length?`<h3>Te propongo anotar</h3><div class="list">${r.acciones.map((a,i)=>`<div class="row"><div class="main"><div class="t" style="white-space:normal">${esc(a.resumen)}</div><div class="s">${{venta:'Venta',pago:'Pago',gasto:'Gasto',movimiento:'Movimiento'}[a.tipo]}${a._aviso?' · <span class="chip w">'+esc(a._aviso)+'</span>':''}</div></div>${a._hecho?'<span class="chip ok">✓ anotado</span>':`<button class="btn sm" data-a="iaAbrir" data-i="${i}">Revisar</button>`}</div>`).join('')}</div>
+  ${(r.acciones||[]).length?`<h3>Te propongo anotar</h3><div class="list">${r.acciones.map((a,i)=>`<div class="row"><div class="main"><div class="t" style="white-space:normal">${esc(a.resumen)}</div><div class="s">${{venta:'Venta',pago:'Pago',gasto:'Gasto',movimiento:'Movimiento'}[a.tipo]}${a._aviso?' · <span class="chip w">'+esc(a._aviso)+'</span>':''}</div></div>${a._hecho?'<span class="chip ok">✓ anotado</span>':`<button class="btn sm" data-a="iaAbrir" data-i="${i}">Revisar</button>`}</div>${iaOpciones(a,i)}`).join('')}</div>
     <p class="note">Cada una abre el formulario de siempre con los datos listos. Revisa y toca Guardar.</p>`:''}`;
 }
 SCREENS.f_ia=vIA;
+// "¿cuál cliente?": la IA manda las opciones y se elige con un toque (y lo aprende)
+function iaOpciones(a,i){ const op=a.cliente_opciones||[]; if(a._hecho||!op.length) return '';
+  return `<div class="chips" style="padding:0 0 10px">${op.map(id=>{ const k=S.clientes.find(x=>x.id===id); return `<div class="seg"><button data-a="iaCli" data-i="${i}" data-v="${id}" ${pressed(a.cliente_id===id)}>${esc(k.nombre)}</button></div>`; }).join('')}</div>`; }
+A.iaCli=d=>{ const a=ui.ia.acciones[+d.i]; a.cliente_id=d.v; a._elegido=true; if(a._aviso==='¿cuál cliente?'||a._aviso==='elige quién pagó') a._aviso=null; render(); };
 const _vAddSheet2=vAddSheet;
 vAddSheet=function(){ return _vAddSheet2().replace('<button class="addrow" data-a="flow" data-f="f_vender">',
   `<button class="addrow" data-a="flow" data-f="f_ia"><span class="ic gr"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></span><span class="main"><span class="t" style="display:block">✨ Anotar hablando</span><span class="s">O escribiendo: "vendí un light blue a la tía ana en 3 cuotas"</span></span></button>
@@ -1460,9 +1464,12 @@ startFlow=function(f,extra={}){ if(f==='f_ia'){ if(!tab.startsWith('f_')) ui.iaF
 // valida la propuesta contra los datos reales antes de mostrarla
 function iaCheck(a){
   if(a.cliente_id&&!S.clientes.some(k=>k.id===a.cliente_id)){ a.cliente_id=null; a._aviso='revisa el cliente'; }
+  a.cliente_opciones=[...new Set(a.cliente_opciones||[])].filter(id=>S.clientes.some(k=>k.id===id)).slice(0,6);
+  if(a.cliente_id) a.cliente_opciones=[];
   a.productos=(a.productos||[]).filter(p=>{ const b=S.bottles.find(x=>x.id===p.ref); return b&&(b.estado==='Stock'||b.estado==='En camino'||b.estado==='Abierta'); });
   if(a.tipo==='venta'&&!a.productos.length) a._aviso='elige los perfumes';
   if(a.tipo==='pago'&&!a.cliente_id) a._aviso='elige quién pagó';
+  if(a.cliente_opciones.length&&!a.cliente_id) a._aviso='¿cuál cliente?';
   return a;
 }
 Object.assign(A,{
@@ -1518,7 +1525,7 @@ function iaLearn(a,rec,texto){
   let cli=null;
   if(rec.tipo==='ventas') cli=r.cliente;
   if(rec.tipo==='pagos'){ const c=S.cuotas.find(x=>x.id===r.cuota), v=c&&S.ventas.find(x=>x.id===c.venta); cli=v?v.cliente:null; }
-  if(cli&&a.cliente_dicho&&cli!==a.cliente_id){ const d=sinArticulo(a.cliente_dicho);
+  if(cli&&a.cliente_dicho&&(cli!==a.cliente_id||a._elegido)){ const d=sinArticulo(a.cliente_dicho);
     if(d){ M.alias=M.alias.filter(x=>x.d!==d); M.alias.push({d,id:cli,f}); if(M.alias.length>150) M.alias.shift(); } }
   if(rec.tipo==='ventas'){
     const prop=(a.productos||[]).map(p=>{ const b=S.bottles.find(x=>x.id===p.ref); return b?b.name:null; }).filter(Boolean).sort();
