@@ -919,6 +919,7 @@ function render(top){
     else if(s.t==='gastoQuick') inner=vGastoQuick(s);
     else if(s.t==='waTel') inner=(typeof vWaTel==='function')?vWaTel(s):'';
     else if(s.t==='ajEdit') inner=(typeof vAjEdit==='function')?vAjEdit(s):'';
+    else if(s.t==='plan') inner=(typeof vPlanSheet==='function')?vPlanSheet(s):'';
     else if(s.t==='consPremio') inner=(typeof vPremioSheet==='function')?vPremioSheet(s):'';
     if(!inner){ ui.sheet=null; sh.hidden=true; sh.innerHTML=''; } else { sh.innerHTML=`<div class="panel" role="dialog" aria-modal="true">${inner}</div>`; sh.hidden=false; } }
   else { sh.hidden=true; sh.innerHTML=''; }
@@ -1688,7 +1689,7 @@ A.iaMemDel=d=>{ const M=iaMem(), x=M[d.k][+d.i]; if(!x) return; commit('Borrado'
 
 
 // versión visible al final de Ajustes, para saber si el teléfono ya tiene la última
-const APP_VER='15-10 14:29';
+const APP_VER='16-10 05:42';
 
 /* ---------- Ajustes: lista agrupada, cada cosa se edita en su propia hoja ---------- */
 const AJ_MSG={antes:['Antes de que venza','Se manda unos días antes del vencimiento.'],hoy:['El día que vence','Se manda el mismo día del vencimiento.'],atrasada:['Cuota atrasada','Para cuando ya pasó la fecha.']};
@@ -1779,6 +1780,11 @@ const FIXES=[
    // 6. unir dos fichas de la misma persona
    const va=K(p.unirDe), vp=K(p.unirEn); if(va&&vp&&va!==vp){ S.ventas.forEach(v=>{ if(v.cliente===va.id) v.cliente=vp.id; }); if(!vp.tel&&va.tel) vp.tel=va.tel; if(!vp.dia&&va.dia) vp.dia=va.dia; vp.favor=(vp.favor||0)+(va.favor||0); if(va.notas) vp.notas=[vp.notas,va.notas].filter(Boolean).join(' · ');
      if(S.iaMem) S.iaMem.alias.forEach(a=>{ if(a.id===va.id) a.id=vp.id; }); S.clientes=S.clientes.filter(k=>k!==va); }
+   // 7. cuotas que se debían en un mes anterior: la primera pendiente pasa a ese mes y las siguientes se corren
+   if(p.atrasadas){ const {paid}=idx(), [y,m]=p.atrasadas.mes.split('-').map(Number);
+     for(const vid of p.atrasadas.ventas){ const v=V(vid); if(!v) continue; const k=K(v.cliente);
+       const pend=S.cuotas.filter(c=>c.venta===vid&&!c.perdida&&!c.conf&&saldoC(c,paid)>0).sort((a,b)=>a.n-b.n);
+       pend.forEach((c,i)=>{ c.vence=dueIn(y,m-1+i,k&&k.dia); }); } }
    // 8. botellas del pedido O1 (árabes, $400.000, se deben $200.000)
    const o1=S.compras.find(c=>c.id==='O1'); if(o1){ ['B241','B242','B243','B244','B245','B246','B247','B248','B249'].forEach(id=>{ const b=B(id); if(b&&!b.compra){ b.compra='O1'; b.fCompra=b.fCompra||o1.fecha; } }); o1.nota='Perfumes árabes: $400.000, pagados $200.000, el resto en noviembre.'; }
    // 9. pedido del Proveedor 1 del 14 oct: 5 ya llegaron y falta uno
@@ -1800,6 +1806,72 @@ const _vAjustesFix=vAjustes;
 vAjustes=function(){ const h=_vAjustesFix(); if(!(me&&/^csaavedrana@/i.test(me.email||''))) return h;
   return h.replace('<h3>Ayuda</h3>',`<div class="list" style="margin-top:6px">${ajRow('fixFile','Aplicar arreglo de datos','Solo Camila: archivo que prepara Claude')}</div><h3>Ayuda</h3>`); };
 SCREENS.ajustes=vAjustes;
+
+/* ---------- Plan de pago: juntar las deudas de un cliente en cuotas nuevas ----------
+   Ej: Tía X debe 132.000 de una compra y 80.000 de otra → un plan de 4 cuotas de 53.000.
+   Las cuotas pendientes de las compras se cierran en lo ya pagado y la deuda pasa a un "plan" (una venta sin perfumes,
+   así no cambia la ganancia). Si aún no se ha pagado nada del plan, se puede deshacer. */
+function deudasCli(kid){ const {paid}=idx();
+  const cs=S.cuotas.filter(c=>{ const v=S.ventas.find(x=>x.id===c.venta); return v&&v.cliente===kid&&!c.conf&&!c.perdida&&saldoC(c,paid)>0; });
+  const porVenta=new Map(); for(const c of cs) porVenta.set(c.venta,(porVenta.get(c.venta)||0)+saldoC(c,paid));
+  return {cs,porVenta,total:cs.reduce((a,c)=>a+saldoC(c,paid),0)}; }
+const ventaLab=v=>v.plan?`Plan de pago (${v.plan.de.join(' + ')})`:(v.items.filter(i=>i.t!=='x').map(i=>i.nombre).join(', ')||'Venta sin detalle');
+function planFechas(primera,n,dia){ const d=D(primera), out=[primera]; for(let i=1;i<n;i++) out.push(dueIn(d.getUTCFullYear(),d.getUTCMonth()+i,dia||null)); return out; }
+function vPlanSheet(s){
+  const k=S.clientes.find(x=>x.id===s.id); if(!k) return '';
+  const {porVenta,total}=deudasCli(k.id), n=ui.planN||4, primera=V('plf',nextMonthDue(k.dia)), ms=split(total,n), fs=planFechas(primera,n,k.dia);
+  const iguales=ms.every(m=>m===ms[0]);
+  return `<div class="grab"></div><h2 style="margin:0">Plan de cuotas para ${esc(saludo(k.nombre))}</h2>
+  <p class="note" style="margin:0">Junta todo lo que debe en cuotas nuevas. Lo que ya pagó queda igual.</p>
+  <div class="sched">${[...porVenta].map(([vid,m])=>{ const v=S.ventas.find(x=>x.id===vid); return `<div class="r"><span>${vid} · ${esc(ventaLab(v))}</span><b>${clp(m)}</b></div>`; }).join('')}<div class="r tot"><span>Debe en total</span><span>${clp(total)}</span></div></div>
+  <div class="field"><span class="flab">¿En cuántas cuotas?</span>${segBtns('planN',[1,2,3,4,5,6,8,10].map(x=>[String(x),String(x)]),String(n))}</div>
+  <div class="field"><label for="plf">Primera cuota</label><input id="plf" data-k data-r type="date" value="${esc(primera)}"></div>
+  <div class="card" style="gap:4px"><span class="lab">${iguales?`${n} cuota${n>1?'s':''} de ${clp(ms[0])}`:`${n} cuotas`}</span>
+    <div class="sched">${ms.map((m,i)=>`<div class="r"><span>Cuota ${i+1} · ${fmtDate(fs[i])}</span><b>${clp(m)}</b></div>`).join('')}</div></div>
+  <div class="acts"><button class="btn ghost" data-a="closeSheet">Cancelar</button><button class="btn" data-a="planSave" data-id="${k.id}" ${total>0?'':'disabled'}>Crear plan</button></div>`; }
+A.planOpen=d=>{ ui.sheet={t:'plan',id:d.id}; ui.planN=null; clearForm('plf'); render(); };
+A.planN=d=>{ ui.planN=+d.v; render(); };
+A.planSave=d=>{ const k=S.clientes.find(x=>x.id===d.id); if(!k) return;
+  const {paid}=idx(), {cs,porVenta,total}=deudasCli(k.id); if(!total) return;
+  const n=ui.planN||4, primera=V('plf',nextMonthDue(k.dia)), ms=split(total,n), fs=planFechas(primera,n,k.dia);
+  const nv=Math.max(S.cfg.nextV||0,...S.ventas.map(v=>+String(v.id).slice(1)||0),0)+1, id='V'+pad(nv), de=[...porVenta.keys()];
+  ui.sheet=null; clearForm('plf');
+  commit(`Plan ${id}: ${n} cuota${n>1?'s':''} de ${clp(ms[0])}`, ()=>{
+    S.cfg.nextV=nv;
+    const orig=cs.map(c=>({...c}));
+    for(const c of cs){ const p=paid.get(c.id)||0; if(p>0) c.monto=p; else S.cuotas=S.cuotas.filter(x=>x!==c); }
+    S.ventas.push({id,cliente:k.id,fecha:today(),vendedor:ui.vend||'Mati',total,pie:0,items:[],entrega:null,plan:{de,orig}});
+    ms.forEach((m,i)=>S.cuotas.push({id:uid('C'),venta:id,n:i+1,monto:m,vence:fs[i]}));
+    de.forEach(vid=>{ const v=S.ventas.find(x=>x.id===vid); if(v) v.enPlan=id; }); }); };
+A.planUndo=d=>{ const v=S.ventas.find(x=>x.id===d.id); if(!v||!v.plan) return; const {paid}=idx();
+  if(S.cuotas.some(c=>c.venta===v.id&&(paid.get(c.id)||0)>0)){ toast('El plan ya tiene pagos: no se puede deshacer.'); return; }
+  ui.sheet=null;
+  commit(`Plan ${v.id} deshecho`, ()=>{
+    S.cuotas=S.cuotas.filter(c=>c.venta!==v.id);
+    for(const o of v.plan.orig){ const c=S.cuotas.find(x=>x.id===o.id); if(c) Object.assign(c,o); else S.cuotas.push({...o}); }
+    v.plan.de.forEach(vid=>{ const x=S.ventas.find(y=>y.id===vid); if(x&&x.enPlan===v.id) delete x.enPlan; });
+    S.ventas=S.ventas.filter(x=>x!==v); }); };
+// hoja de la venta: el plan muestra sus cuotas y "deshacer"; una compra que está en un plan no se edita ni se anula
+const _vVentaSheetPlan=vVentaSheet;
+vVentaSheet=function(v){
+  if(v.plan){ const {paid}=idx(), cs=S.cuotas.filter(c=>c.venta===v.id).sort((a,b)=>a.n-b.n), pagado=cs.reduce((a,c)=>a+(paid.get(c.id)||0),0);
+    return `<div class="grab"></div><div><h2 style="margin:0">${v.id} · Plan de pago</h2><p class="note" style="margin-top:4px">${esc(cliName(v.cliente))} · ${fmtDay(v.fecha)} · junta ${v.plan.de.join(' + ')}</p></div>
+    <div class="sched">${cs.map(c=>{ const s=saldoC(c,paid); return `<div class="r"><span>Cuota ${c.n} · ${fmtDate(c.vence)}</span><b>${s?'debe '+clp(s):'✓ '+clp(c.monto)}</b></div>`; }).join('')}<div class="r tot"><span>Total · pagado ${clp(pagado)}</span><span>${clp(v.total)}</span></div></div>
+    ${pagado?'<p class="note">Ya tiene pagos, así que no se puede deshacer.</p>':`<button class="btn ghost block" data-a="planUndo" data-id="${v.id}">Deshacer el plan (vuelven las cuotas de antes)</button>`}
+    <button class="btn ghost block" data-a="closeSheet">Cerrar</button>`; }
+  let h=_vVentaSheetPlan(v);
+  if(v.enPlan) h=h.replace(/<div class="acts"><button class="btn ghost" data-a="vAct" data-v="editar">[\s\S]*?<\/div>/,`<p class="note">Lo que faltaba pagar de esta compra pasó al plan ${v.enPlan}. Para cambiarla, primero deshaz el plan.</p>`).replace(/<button class="btn sm ghost" data-a="swapAsk"[^>]*>Cambiar<\/button>/g,'');
+  return h; };
+// ficha del cliente: botón para armar el plan, y el plan con su nombre en la lista de compras
+const _vClientePlan=vCliente;
+vCliente=function(){ let h=_vClientePlan(); const k=S.clientes.find(x=>x.id===ui.cliId); if(!k) return h;
+  const {porVenta,total}=deudasCli(k.id);
+  if(total>0){ const lab=porVenta.size>1?'Juntar sus deudas en un plan de cuotas':'Cambiar sus cuotas (nuevo plan)';
+    const btn=`<button class="btn ghost block" style="margin-top:8px" data-a="planOpen" data-id="${k.id}">${lab}</button>`;
+    h=h.includes('>WhatsApp</a></div>')?h.replace('>WhatsApp</a></div>','>WhatsApp</a></div>'+btn):h.replace('<h3>Compras</h3>',btn+'<h3>Compras</h3>'); }
+  for(const v of S.ventas.filter(x=>x.cliente===k.id&&x.plan)) h=h.replace(`data-id="${v.id}"><div class="main"><div class="t" style="white-space:normal">Venta sin detalle</div>`,`data-id="${v.id}"><div class="main"><div class="t" style="white-space:normal">${esc(ventaLab(v))}</div>`);
+  return h; };
+SCREENS.cliente=vCliente;
 
 /* ---------- events ---------- */
 document.addEventListener('click', e=>{
