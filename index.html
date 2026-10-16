@@ -1690,7 +1690,7 @@ A.iaMemDel=d=>{ const M=iaMem(), x=M[d.k][+d.i]; if(!x) return; commit('Borrado'
 
 
 // versión visible al final de Ajustes, para saber si el teléfono ya tiene la última
-const APP_VER='16-10 06:01';
+const APP_VER='16-10 06:09';
 
 /* ---------- Ajustes: lista agrupada, cada cosa se edita en su propia hoja ---------- */
 const AJ_MSG={antes:['Antes de que venza','Se manda unos días antes del vencimiento.'],hoy:['El día que vence','Se manda el mismo día del vencimiento.'],atrasada:['Cuota atrasada','Para cuando ya pasó la fecha.']};
@@ -1891,6 +1891,20 @@ function vCliEditSheet(){ const m=_vClienteEdit().match(CLI_FORM);
 A.cliEdit=()=>{ ui.sheet={t:'cliEdit'}; clearForm('cn','ct','cd','cno'); render(); };
 const _saveCliEdit=A.saveCli;
 A.saveCli=function(d,...r){ const enHoja=ui.sheet&&ui.sheet.t==='cliEdit'; const out=_saveCliEdit.call(this,d,...r); if(enHoja&&FORM.cn===undefined&&FORM.ct===undefined){ ui.sheet=null; render(); } return out; };
+
+/* ---------- ¿Hay una versión nueva de la app? ----------
+   Se revisa al abrir, al volver a la app y cada 10 minutos. Si la hay, aparece un aviso para actualizar.
+   Actualizar no pierde nada: lo que no se alcanzó a subir queda guardado en el teléfono y se sube al volver. */
+async function revisarVersion(){
+  if(location.protocol!=='https:'||document.getElementById('upd')) return;
+  try{ const r=await fetch('version.json?t='+Date.now(),{cache:'no-store'}); if(!r.ok) return; const {v}=await r.json();
+    if(v&&v!==APP_VER){ const b=document.createElement('div'); b.id='upd';
+      b.style.cssText='position:fixed;left:12px;right:12px;bottom:calc(84px + env(safe-area-inset-bottom,0px));z-index:30;display:flex;gap:10px;align-items:center;justify-content:space-between;background:var(--plum);color:var(--bg);border-radius:14px;padding:10px 12px;box-shadow:0 6px 20px rgba(0,0,0,.25);font-weight:600';
+      b.innerHTML='<span>Hay una versión nueva de la app</span><button id="updBtn" style="border:0;border-radius:10px;padding:8px 12px;font-weight:700;background:var(--bg);color:var(--plum)">Actualizar</button>';
+      document.body.appendChild(b);
+      $('#updBtn').onclick=async()=>{ $('#updBtn').textContent='Actualizando…'; try{ cacheLocal(); }catch(e){} try{ await fetch('./',{cache:'reload'}); await fetch('index.html',{cache:'reload'}); }catch(e){} location.reload(); }; } }catch(e){} }
+setTimeout(revisarVersion,4000); setInterval(revisarVersion,10*60*1000);
+document.addEventListener('visibilitychange',()=>{ if(document.visibilityState==='visible') revisarVersion(); });
 
 /* ---------- events ---------- */
 document.addEventListener('click', e=>{
