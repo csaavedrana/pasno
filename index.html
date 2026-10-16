@@ -920,6 +920,7 @@ function render(top){
     else if(s.t==='waTel') inner=(typeof vWaTel==='function')?vWaTel(s):'';
     else if(s.t==='ajEdit') inner=(typeof vAjEdit==='function')?vAjEdit(s):'';
     else if(s.t==='plan') inner=(typeof vPlanSheet==='function')?vPlanSheet(s):'';
+    else if(s.t==='cliEdit') inner=(typeof vCliEditSheet==='function')?vCliEditSheet():'';
     else if(s.t==='consPremio') inner=(typeof vPremioSheet==='function')?vPremioSheet(s):'';
     if(!inner){ ui.sheet=null; sh.hidden=true; sh.innerHTML=''; } else { sh.innerHTML=`<div class="panel" role="dialog" aria-modal="true">${inner}</div>`; sh.hidden=false; } }
   else { sh.hidden=true; sh.innerHTML=''; }
@@ -1689,7 +1690,7 @@ A.iaMemDel=d=>{ const M=iaMem(), x=M[d.k][+d.i]; if(!x) return; commit('Borrado'
 
 
 // versión visible al final de Ajustes, para saber si el teléfono ya tiene la última
-const APP_VER='16-10 05:42';
+const APP_VER='16-10 06:01';
 
 /* ---------- Ajustes: lista agrupada, cada cosa se edita en su propia hoja ---------- */
 const AJ_MSG={antes:['Antes de que venza','Se manda unos días antes del vencimiento.'],hoy:['El día que vence','Se manda el mismo día del vencimiento.'],atrasada:['Cuota atrasada','Para cuando ya pasó la fecha.']};
@@ -1872,6 +1873,24 @@ vCliente=function(){ let h=_vClientePlan(); const k=S.clientes.find(x=>x.id===ui
   for(const v of S.ventas.filter(x=>x.cliente===k.id&&x.plan)) h=h.replace(`data-id="${v.id}"><div class="main"><div class="t" style="white-space:normal">Venta sin detalle</div>`,`data-id="${v.id}"><div class="main"><div class="t" style="white-space:normal">${esc(ventaLab(v))}</div>`);
   return h; };
 SCREENS.cliente=vCliente;
+
+/* ---------- Ficha del cliente: editar va arriba (✎ junto al nombre) y se abre en una hoja ----------
+   La ficha queda para consultar y cobrar; los datos se muestran como texto y al tocarlos se editan. */
+const CLI_FORM=/<div style="display:grid;gap:12px;margin-top:14px">[\s\S]*?data-a="saveCli"[^>]*>[^<]*<\/button>\s*<\/div>/;
+const _vClienteEdit=vCliente;
+vCliente=function(){ let h=_vClienteEdit(); if(ui.cliId==='new') return h; const k=S.clientes.find(x=>x.id===ui.cliId); if(!k) return h;
+  const info=`<button class="rowbtn" style="margin-top:12px;border:1px solid var(--line);border-radius:14px" data-a="cliEdit"><div class="main">
+    <div class="t">${k.tel?'WhatsApp '+fmtTel(k.tel):'<span style="color:var(--muted)">Sin WhatsApp</span>'}</div>
+    <div class="s" style="white-space:normal">Cobra ${k.dia?'el día '+k.dia:'el 5° día hábil'}${k.notas?' · '+esc(k.notas):''}</div></div><span class="s">Editar ›</span></button>`;
+  h=h.replace(CLI_FORM,info);
+  h=h.replace('</h2></div>',`</h2><button class="iconbtn" style="margin-left:auto;flex-shrink:0" data-a="cliEdit" aria-label="Editar cliente"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 20h4L19 9l-4-4L4 16v4z"/><path d="M14 6l4 4"/></svg></button></div>`);
+  return h; };
+SCREENS.cliente=vCliente;
+function vCliEditSheet(){ const m=_vClienteEdit().match(CLI_FORM);
+  return `<div class="grab"></div><h2 style="margin:0">Editar cliente</h2>${m?m[0].replace('margin-top:14px','margin-top:4px'):''}<button class="btn ghost block" data-a="closeSheet">Cancelar</button>`; }
+A.cliEdit=()=>{ ui.sheet={t:'cliEdit'}; clearForm('cn','ct','cd','cno'); render(); };
+const _saveCliEdit=A.saveCli;
+A.saveCli=function(d,...r){ const enHoja=ui.sheet&&ui.sheet.t==='cliEdit'; const out=_saveCliEdit.call(this,d,...r); if(enHoja&&FORM.cn===undefined&&FORM.ct===undefined){ ui.sheet=null; render(); } return out; };
 
 /* ---------- events ---------- */
 document.addEventListener('click', e=>{
