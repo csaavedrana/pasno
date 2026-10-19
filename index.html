@@ -921,6 +921,7 @@ function render(top){
     else if(s.t==='ajEdit') inner=(typeof vAjEdit==='function')?vAjEdit(s):'';
     else if(s.t==='plan') inner=(typeof vPlanSheet==='function')?vPlanSheet(s):'';
     else if(s.t==='cliEdit') inner=(typeof vCliEditSheet==='function')?vCliEditSheet():'';
+    else if(s.t==='insumo') inner=(typeof vInsumoSheet==='function')?vInsumoSheet(s):'';
     else if(s.t==='consPremio') inner=(typeof vPremioSheet==='function')?vPremioSheet(s):'';
     if(!inner){ ui.sheet=null; sh.hidden=true; sh.innerHTML=''; } else { sh.innerHTML=`<div class="panel" role="dialog" aria-modal="true">${inner}</div>`; sh.hidden=false; } }
   else { sh.hidden=true; sh.innerHTML=''; }
@@ -1690,7 +1691,7 @@ A.iaMemDel=d=>{ const M=iaMem(), x=M[d.k][+d.i]; if(!x) return; commit('Borrado'
 
 
 // versión visible al final de Ajustes, para saber si el teléfono ya tiene la última
-const APP_VER='16-10 06:09';
+const APP_VER='19-10 18:33';
 
 /* ---------- Ajustes: lista agrupada, cada cosa se edita en su propia hoja ---------- */
 const AJ_MSG={antes:['Antes de que venza','Se manda unos días antes del vencimiento.'],hoy:['El día que vence','Se manda el mismo día del vencimiento.'],atrasada:['Cuota atrasada','Para cuando ya pasó la fecha.']};
@@ -1918,6 +1919,103 @@ document.addEventListener('change', e=>{ const el=e.target; if(!el.id||!('k' in 
 document.addEventListener('toggle', e=>{ const d=e.target; if(d.tagName!=='DETAILS'||!d.dataset.cli) return;
   if(d.open) ui.openCli=d.dataset.cli; else if(ui.openCli===d.dataset.cli){ ui.openCli=null; if(ui.payCli===d.dataset.cli) ui.payCli=null; } }, true);
 $('#sheet').addEventListener('click', e=>{ if(e.target.id==='sheet'){ ui.sheet=null; render(); } });
+
+/* ===== src/11_fechas_cobro.js ===== */
+/* ---------- Cambiar fechas de cobro de una venta ----------
+   Desde la hoja de la venta: "Cambiar fechas de cobro". Eliges cuándo vence la próxima cuota y las siguientes
+   se corren mes a mes (según el día de cobro del cliente). Si le pones una fecha pasada, sale como atrasada. */
+function cuotasPend(vid){ const {paid}=idx(); return S.cuotas.filter(c=>c.venta===vid&&!c.perdida&&!c.conf&&saldoC(c,paid)>0).sort((a,b)=>a.n-b.n); }
+const _vVentaSheetFechas=vVentaSheet;
+vVentaSheet=function(v){
+  const pend=cuotasPend(v.id), k=S.clientes.find(x=>x.id===v.cliente)||{};
+  if(ui.vAct==='fechas'&&pend.length){ const {paid}=idx(), primera=V('fcq',pend[0].vence||nextMonthDue(k.dia)), fs=planFechas(primera,pend.length,k.dia);
+    return `<div class="grab"></div><div><h2 style="margin:0">${v.id} · ${esc(cliName(v.cliente))}</h2><p class="note" style="margin-top:4px">Cambiar fechas de cobro</p></div>
+    <div class="field"><label for="fcq">La próxima cuota vence el</label><input id="fcq" data-k data-r type="date" value="${esc(primera)}">
+    <span class="s">Las siguientes se corren mes a mes. Si ya debía este mes o antes, pon esa fecha y saldrá como atrasada.</span></div>
+    <div class="sched">${pend.map((c,i)=>`<div class="r"><span>${c.n===0?'Pie':'Cuota '+c.n} · ${fmtDate(fs[i])}${fs[i]<today()?' <span class="chip w">atrasada</span>':''}</span><b>${clp(saldoC(c,paid))}</b></div>`).join('')}</div>
+    <div class="acts"><button class="btn ghost" data-a="vAct" data-v="">Atrás</button><button class="btn" data-a="fechasSave" data-id="${v.id}">Guardar fechas</button></div>`; }
+  let h=_vVentaSheetFechas(v);
+  if(!ui.vAct&&pend.length&&!v.enPlan){ const btn=`<button class="btn ghost block" data-a="vAct" data-v="fechas">Cambiar fechas de cobro</button>`;
+    h=h.includes('data-a="closeSheet">Cerrar</button>')?h.replace(/<button class="btn ghost block" data-a="closeSheet">Cerrar<\/button>(?![\s\S]*data-a="closeSheet">Cerrar<\/button>)/,btn+'<button class="btn ghost block" data-a="closeSheet">Cerrar</button>'):h+btn; }
+  return h; };
+A.fechasSave=d=>{ const v=S.ventas.find(x=>x.id===d.id); if(!v) return; const pend=cuotasPend(v.id), k=S.clientes.find(x=>x.id===v.cliente)||{};
+  const fs=planFechas(V('fcq',pend[0].vence||nextMonthDue(k.dia)),pend.length,k.dia); ui.vAct=null; clearForm('fcq');
+  commit(`Fechas de ${v.id} actualizadas`, ()=>{ pend.forEach((c,i)=>{ c.vence=fs[i]; }); }); };
+
+
+/* ===== src/12_insumos.js ===== */
+/* ---------- Insumos para decants: frascos, etiquetas, bolsas, cajas ----------
+   Cada insumo dice en qué se gasta (ej: 1 frasco de 5 ml por cada decant de 5 ml). Al guardar una venta
+   o mandar decants a vender, se descuentan solos. "Compré" suma al stock y anota el gasto.
+   Si a este ritmo (últimos 30 días) algo se acaba en menos de 2 semanas, Inicio avisa que es buen momento para reponer. */
+const INS_USOS={d5:'1 por cada decant de 5 ml',d10:'1 por cada decant de 10 ml',dec:'1 por cada decant',venta:'1 por cada venta',envio:'1 por cada envío',mano:'Lo descuento yo'};
+const INS_CAT={d5:'Frascos decant',d10:'Frascos decant',dec:'Etiquetas',venta:'Bolsas',envio:'Cajas',mano:'Otro'};
+const INS_BASE=[{id:'frasco5',nombre:'Frascos 5 ml',usa:'d5'},{id:'frasco10',nombre:'Frascos 10 ml',usa:'d10'},{id:'etiqueta',nombre:'Etiquetas / stickers',usa:'dec'},{id:'bolsa',nombre:'Bolsas',usa:'venta'},{id:'caja',nombre:'Cajas de envío',usa:'envio'}];
+const insumos=()=>S.insumos||(S.insumos=INS_BASE.map(x=>({...x,stock:null,min:null})));
+function insUso(id,dias=30){ const desde=addDays(today(),-dias); return (S.insumoLog||[]).filter(l=>l.id===id&&l.d<0&&l.f>=desde).reduce((a,l)=>a-l.d,0); }
+function insEstado(x){ if(x.stock==null) return {nuevo:true}; const uso=insUso(x.id), dias=uso?Math.floor(x.stock/(uso/30)):null;
+  const alerta=x.stock<=0||(dias!=null&&dias<14)||(x.min!=null&&x.stock<=x.min); return {uso,dias,alerta}; }
+function insMover(id,d,motivo){ const x=insumos().find(i=>i.id===id); if(!x||x.stock==null||!d) return; x.stock=Math.max(0,x.stock+d);
+  const L=S.insumoLog||(S.insumoLog=[]); L.push({f:today(),id,d,m:motivo}); if(L.length>400) L.splice(0,L.length-400); }
+function insConsumir(cnt,motivo){ if(!S.insumos) return; let n=0; for(const x of S.insumos){ const q=cnt[x.usa]||0; if(q&&x.stock!=null){ insMover(x.id,-q*(x.por||1),motivo); n++; } } return n; }
+// al guardar una venta
+const _saveSaleIns=A.saveSale;
+A.saveSale=function(...a){ const n0=S.ventas.length; const r=_saveSaleIns.apply(this,a);
+  if(S.ventas.length>n0){ const v=S.ventas[S.ventas.length-1], ds=v.items.filter(i=>i.t==='d');
+    if(insConsumir({d5:ds.filter(i=>i.size===5).length,d10:ds.filter(i=>i.size===10).length,dec:ds.length,venta:1,envio:v.entrega==='envio'?1:0},'venta '+v.id)) save(); }
+  return r; };
+// al mandar decants a vender (consignación)
+const _consSaveIns=A.consSave;
+A.consSave=function(...a){ const g0=(S.consignas||[]).length; const r=_consSaveIns.apply(this,a);
+  if((S.consignas||[]).length>g0){ const g=S.consignas[S.consignas.length-1], ds=g.items.filter(i=>i.t==='d');
+    if(insConsumir({d5:ds.filter(i=>i.size===5).length,d10:ds.filter(i=>i.size===10).length,dec:ds.length},'consignación')) save(); }
+  return r; };
+// pantalla
+function vInsumos(){ const L=insumos();
+  return `${topbar('Insumos','stock')}<p class="note" style="margin-top:0">Frascos, etiquetas, bolsas… Se descuentan solos cuando vendes o mandas decants, y te aviso cuando sea buen momento para reponer.</p>
+  <div class="list">${L.map(x=>{ const e=insEstado(x);
+    return `<button class="rowbtn" data-a="insAbrir" data-id="${x.id}"><div class="main"><div class="t">${esc(x.nombre)}</div><div class="s">${esc(INS_USOS[x.usa]||'')}${e.uso?` · usaste ${e.uso} en 30 días`:''}</div></div>
+    <div style="text-align:right">${e.nuevo?'<span class="chip n">anota cuántos tienes</span>':`<div class="amt">${x.stock}</div>${e.alerta?`<span class="chip w">${x.stock<=0?'se acabó':e.dias!=null?'~'+e.dias+' días':'reponer'}</span>`:e.dias!=null?`<span class="s">~${e.dias} días</span>`:''}`}</div></button>`; }).join('')}</div>
+  <button class="btn ghost block" style="margin-top:12px" data-a="insAbrir" data-id="nuevo">+ Agregar otro insumo</button>`; }
+SCREENS.insumos=vInsumos;
+A.insumos=()=>{ goTo('insumos'); };
+A.insAbrir=d=>{ ui.sheet={t:'insumo',id:d.id,modo:d.id==='nuevo'?'editar':(insumos().find(x=>x.id===d.id)||{}).stock==null?'contar':'compre'}; clearForm('iq','im','in','iu','imin'); render(); };
+A.insModo=d=>{ ui.sheet.modo=d.v; clearForm('iq','im'); render(); };
+function vInsumoSheet(s){ const nuevo=s.id==='nuevo', x=nuevo?{id:'nuevo',nombre:'',usa:'mano',stock:0,min:null}:insumos().find(i=>i.id===s.id); if(!x) return '';
+  const tabs=nuevo?'':`<div class="seg">${[['compre','Compré'],['contar','Contar'],['editar','Editar']].map(([v,l])=>`<button data-a="insModo" data-v="${v}" ${pressed(s.modo===v)}>${l}</button>`).join('')}</div>`;
+  let body='';
+  if(s.modo==='compre') body=`<div class="grid2"><div class="field"><label for="iq">¿Cuántos compraste?</label><input id="iq" data-k inputmode="numeric" value="${esc(V('iq'))}"></div><div class="field"><label for="im">¿Cuánto pagaste?</label><input id="im" data-k inputmode="numeric" placeholder="opcional" value="${esc(V('im'))}"></div></div>
+    <span class="s">Se suman al stock${x.stock!=null?` (ahora ${x.stock})`:''} y, si pones el monto, se anota como gasto.</span><button class="btn block" data-a="insGuardar" data-id="${x.id}">Guardar compra</button>`;
+  else if(s.modo==='contar') body=`<div class="field"><label for="iq">¿Cuántos tienes ahora?</label><input id="iq" data-k inputmode="numeric" value="${esc(V('iq',x.stock==null?'':String(x.stock)))}"><span class="s">Cuéntalos y anota el número exacto. Desde ahí se van descontando solos.</span></div><button class="btn block" data-a="insGuardar" data-id="${x.id}">Guardar</button>`;
+  else body=`<div class="field"><label for="in">Nombre</label><input id="in" data-k value="${esc(V('in',x.nombre))}" placeholder="Ej: Frascos 3 ml"></div>
+    <div class="field"><label for="iu">Se gasta</label><select id="iu" data-k>${Object.entries(INS_USOS).map(([k,l])=>`<option value="${k}" ${V('iu',x.usa)===k?'selected':''}>${l}</option>`).join('')}</select></div>
+    <div class="field"><label for="imin">Avísame cuando queden (opcional)</label><input id="imin" data-k inputmode="numeric" placeholder="Ej: 10" value="${esc(V('imin',x.min==null?'':String(x.min)))}"><span class="s">Igual te aviso si a tu ritmo se acaba en menos de 2 semanas.</span></div>
+    <button class="btn block" data-a="insGuardar" data-id="${x.id}">${nuevo?'Agregar':'Guardar'}</button>${nuevo?'':`<button class="linkbtn" style="margin-top:8px" data-a="insBorrar" data-id="${x.id}">Quitar este insumo</button>`}`;
+  return `<div class="grab"></div><h2 style="margin:0">${nuevo?'Nuevo insumo':esc(x.nombre)}</h2>${tabs}${body}<button class="btn ghost block" data-a="closeSheet">Cerrar</button>`; }
+A.insGuardar=d=>{ const s=ui.sheet; if(!s) return;
+  if(s.modo==='editar'){ const nombre=V('in').trim()||((insumos().find(x=>x.id===d.id)||{}).nombre||''); if(!nombre){ toast('Ponle un nombre'); return; }
+    const usa=V('iu',(insumos().find(x=>x.id===d.id)||{}).usa||'mano'), minv=V('imin',null), min=minv==null?undefined:(minv.trim()===''?null:num(minv));
+    ui.sheet=null; commit(d.id==='nuevo'?`${nombre} agregado`:`${nombre} guardado`, ()=>{ if(d.id==='nuevo') insumos().push({id:uid('N'),nombre,usa,stock:null,min:min??null}); else { const x=insumos().find(i=>i.id===d.id); x.nombre=nombre; x.usa=usa; if(min!==undefined) x.min=min; } }); clearForm('in','iu','imin'); return; }
+  const q=num(V('iq')); const x=insumos().find(i=>i.id===d.id); if(!x) return;
+  if(s.modo==='contar'){ if(V('iq').trim()===''){ toast('Anota cuántos tienes'); return; } ui.sheet=null; commit(`${x.nombre}: ${q}`, ()=>{ const antes=x.stock; x.stock=q; const L=S.insumoLog||(S.insumoLog=[]); L.push({f:today(),id:x.id,d:0,m:'conteo',antes}); }); clearForm('iq'); return; }
+  if(!q){ toast('¿Cuántos compraste?'); return; } const m=num(V('im')); ui.sheet=null;
+  commit(`+${q} ${x.nombre}`, ()=>{ if(x.stock==null) x.stock=0; insMover(x.id,q,'compra'); if(m) addGasto(INS_CAT[x.usa]||'Otro',m,`${x.nombre} (${q})`); }); clearForm('iq','im'); };
+A.insBorrar=d=>{ ui.sheet=null; commit('Insumo quitado', ()=>{ S.insumos=insumos().filter(x=>x.id!==d.id); }); };
+// avisos: en Stock (acceso) y en Inicio (reponer)
+function insAlertas(){ return S.insumos?S.insumos.filter(x=>insEstado(x).alerta):[]; }
+const _vStockIns=vStock;
+vStock=function(){ const al=insAlertas(), sin=S.insumos?S.insumos.filter(x=>x.stock==null).length:INS_BASE.length;
+  const card=`<button class="rowbtn" style="margin:2px 0 10px;border:1px solid var(--line);border-radius:14px" data-a="insumos"><div class="main"><div class="t">Insumos para decants</div><div class="s">Frascos, etiquetas, bolsas, cajas${al.length?'':sin?' · anota cuántos tienes':''}</div></div>${al.length?`<span class="chip w">${al.length} por reponer</span>`:''}<span class="s">›</span></button>`;
+  return _vStockIns().replace('<div class="seg3"',card+'<div class="seg3"'); };
+SCREENS.stock=vStock;
+const _vInicioIns=vInicio;
+vInicio=function(){ const h=_vInicioIns(), al=insAlertas(); if(!al.length) return h;
+  const txt=al.map(x=>{ const e=insEstado(x); const porMin=x.min!=null&&x.stock<=x.min&&!(e.dias!=null&&e.dias<14); return `${esc(x.nombre)}: ${x.stock<=0?'se acabaron':porMin?`quedan ${x.stock} (avisas con ${x.min})`:`quedan ${x.stock}${e.dias!=null?`, alcanzan para ~${e.dias} días`:''}`}`; }).join('<br>');
+  const box=`<button class="rowbtn" style="margin:10px 0;border:1px solid var(--line);border-radius:14px;background:var(--amber-soft)" data-a="insumos"><div class="main"><div class="t">Buen momento para reponer</div><div class="s" style="white-space:normal">${txt}</div></div><span class="s">›</span></button>`;
+  const i=h.indexOf('<h2'); return i<0?h+box:h.slice(0,i)+box+h.slice(i); };
+SCREENS.inicio=vInicio;
+
+
 boot();
 if('serviceWorker' in navigator && location.protocol==='https:') navigator.serviceWorker.register('sw.js').catch(()=>{});
 
