@@ -221,6 +221,13 @@ header.top .topicons{flex-shrink:0;display:flex;gap:8px;align-items:center}
 
 /* las etiquetas largas bajan de línea en vez de salirse */
 .chip{white-space:normal;max-width:100%;overflow-wrap:anywhere}
+
+/* Stock en 4 pestañas */
+.seg4{display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) minmax(0,1.32fr);gap:3px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:3px}
+.seg4 button{border:0;background:none;color:var(--ink);border-radius:10px;padding:7px 2px;font-weight:600;font-size:13px;line-height:1.15;min-height:46px;display:grid;align-content:center;justify-items:center;gap:2px;min-width:0;overflow-wrap:normal;text-align:center}
+.seg4 button small{font-size:10.5px;font-weight:500;color:var(--muted)}
+.seg4 button[aria-pressed="true"]{background:var(--plum);color:var(--bg)}
+.seg4 button[aria-pressed="true"] small,.seg4 button[aria-pressed="true"] small span{color:inherit!important;opacity:.85}
 </style></head><body>
 
 <div class="wrap">
@@ -299,7 +306,7 @@ function idx(){
 }
 const saldoC = (c,paid) => c.perdida ? 0 : Math.max(0, c.monto - (paid.get(c.id)||0));
 function openList(){ const {paid,vMap,kMap}=idx(), out=[];
-  for(const c of S.cuotas){ const s=saldoC(c,paid); if(s>0){ const v=vMap.get(c.venta); out.push({c, saldo:s, pagado:paid.get(c.id)||0, v, k:kMap.get(v.cliente)}); } }
+  for(const c of S.cuotas){ const s=saldoC(c,paid); if(s>0){ const v=vMap.get(c.venta); if(!v||!kMap.get(v.cliente)) continue; out.push({c, saldo:s, pagado:paid.get(c.id)||0, v, k:kMap.get(v.cliente)}); } }
   return out.sort((a,b)=>(a.c.vence||'9').localeCompare(b.c.vence||'9')||a.c.n-b.c.n); }
 function byClient(list){ const m=new Map(), t=today();
   for(const o of list){ if(!m.has(o.k.id)) m.set(o.k.id,{k:o.k,items:[],total:0,venc:0,vencN:0,next:null});
@@ -396,7 +403,7 @@ function dupsOf(k){ return S.clientes.filter(o=>o!==k&&!o.nombre.startsWith('Sin
 function dupPairs(){ let n=0; const cs=S.clientes.filter(c=>!c.nombre.startsWith('Sin nombre')); for(let i=0;i<cs.length;i++) for(let j=i+1;j<cs.length;j++) if(similar(cs[i],cs[j])) n++; return n; }
 
 /* ---------- pagos ---------- */
-function clientCuotas(kid){ const {paid,vMap}=idx(); return S.cuotas.filter(c=>!c.conf&&vMap.get(c.venta).cliente===kid&&saldoC(c,paid)>0).sort((a,b)=>(a.vence||'9').localeCompare(b.vence||'9')||a.venta.localeCompare(b.venta)||a.n-b.n); }
+function clientCuotas(kid){ const {paid,vMap}=idx(); return S.cuotas.filter(c=>!c.conf&&vMap.get(c.venta)&&vMap.get(c.venta).cliente===kid&&saldoC(c,paid)>0).sort((a,b)=>(a.vence||'9').localeCompare(b.vence||'9')||a.venta.localeCompare(b.venta)||a.n-b.n); }
 function simulate(kid,amt){ const {paid}=idx(); const out=[]; let rest=amt, partial=null;
   for(const c of clientCuotas(kid)){ if(rest<=0) break; const s=saldoC(c,paid); if(rest>=s){ out.push({c,ap:s,full:true}); rest-=s; } else { out.push({c,ap:rest,full:false,falta:s-rest}); partial={c,falta:s-rest}; rest=0; } }
   return {out,partial,extra:rest}; }
@@ -699,7 +706,7 @@ function vCliente(){
   const isNew=ui.cliId==='new', k=isNew?{id:'new',nombre:'',tel:'',dia:null,notas:'',ult:null,favor:0}:S.clientes.find(c=>c.id===ui.cliId);
   if(!k) return vClientes();
   const ventas=S.ventas.filter(v=>v.cliente===k.id).sort((a,b)=>(b.fecha||'0').localeCompare(a.fecha||'0')||b.id.localeCompare(a.id));
-  const g=isNew?null:groupOf(k.id), {paid}=idx(), comprado=ventas.reduce((a,v)=>a+v.total,0), dups=isNew?[]:dupsOf(k);
+  const g=isNew?null:groupOf(k.id), {paid}=idx(), comprado=ventas.filter(v=>!v.plan).reduce((a,v)=>a+v.total,0), dups=isNew?[]:dupsOf(k);
   const perdido=isNew?0:S.cuotas.filter(c=>c.perdida&&ventas.some(v=>v.id===c.venta)).reduce((a,c)=>a+Math.max(0,c.monto-(paid.get(c.id)||0)),0);
   return `${topbar(isNew?'Nuevo cliente':esc(k.nombre),ui.cliBack==='cobrar'?'cobrar':'clientes')}
   ${!isNew?`<div class="mini"><div class="tile"><span class="lab">Debe</span><span class="v">${clp(g?g.total:0)}</span>${k.favor?`<span class="n">${clp(k.favor)} a favor</span>`:''}</div><div class="tile"><span class="lab">Compró</span><span class="v">${clp(comprado)}</span><span class="n">${ventas.length} venta${ventas.length===1?'':'s'}</span></div><div class="tile"><span class="lab">Recordado</span><span class="v" style="font-size:14px">${k.ult?fmtDate(k.ult):'nunca'}</span></div></div>`:''}
@@ -1087,7 +1094,7 @@ const A = {
   saveCfg(){ commit('Ajustes guardados', ()=>{ S.cfg.regalosMes=num(V('cfR',String(S.cfg.regalosMes)))||S.cfg.regalosMes; S.cfg.tpl={antes:V('cfA',S.cfg.tpl.antes),hoy:V('cfH',S.cfg.tpl.hoy),atrasada:V('cfT',S.cfg.tpl.atrasada)}; }); clearForm('cfR','cfA','cfH','cfT'); },
   reset(){ commit('Datos originales restaurados', ()=>{ S=fresh(); }); FORM={}; picks={}; },
   csv(){ const {paid,vMap,kMap}=idx(); const rows=[['venta','cliente','vendedor','fecha_venta','cuota','monto','pagado','saldo','vence']];
-    for(const c of S.cuotas){ const v=vMap.get(c.venta); rows.push([c.venta,kMap.get(v.cliente).nombre,v.vendedor,v.fecha||'',c.n,c.monto,paid.get(c.id)||0,saldoC(c,paid),c.vence||'']); }
+    for(const c of S.cuotas){ const v=vMap.get(c.venta); if(!v) continue; rows.push([c.venta,(kMap.get(v.cliente)||{}).nombre||'',v.vendedor,v.fecha||'',c.n,c.monto,paid.get(c.id)||0,saldoC(c,paid),c.vence||'']); }
     const csv=rows.map(r=>r.map(x=>`"${String(x).replace(/"/g,'""')}"`).join(';')).join('\n');
     const a=document.createElement('a'); a.href=URL.createObjectURL(new Blob(['﻿'+csv],{type:'text/csv'})); a.download=`pasno-cuotas-${today()}.csv`; a.click(); toast('CSV descargado'); }
 };
@@ -1169,7 +1176,7 @@ document.addEventListener('input', e=>{ if(e.target.id==='shareTxt'){ const a=$(
    Se junta registro por registro: lo que agregó cada uno se suma, lo que cambió uno solo se respeta,
    y si los dos cambiaron lo mismo gana lo del servidor (y se avisa). */
 const MERGE_ID=['bottles','ventas','cuotas','pagos','clientes','compras','deudas','proveedores','consignas','vendedores'];
-const MERGE_LIST=['gastos','movs','saldos','iaHist'];
+const MERGE_LIST=['gastos','movs','saldos','iaHist','insumoLog'];
 function mergeDocs(base,mine,theirs,sinBase){
   // sinBase: no sé qué había antes (respaldo viejo del teléfono): no borro nada, solo agrego y actualizo lo mío
   const J=x=>JSON.stringify(x), out=JSON.parse(J(theirs)), avisos=[];
@@ -1182,6 +1189,7 @@ function mergeDocs(base,mine,theirs,sinBase){
     (mine.bottles||[]).forEach(b=>{ if(b.venta===old&&!(base.bottles||[]).some(x=>x.id===b.id&&x.venta===old)) b.venta=nu; });
     (mine.gastos||[]).forEach(g=>{ if(g.ref&&g.ref.venta===old) g.ref.venta=nu; });
     (mine.iaHist||[]).forEach(h=>{ if(h.fin&&h.fin.venta===old) h.fin.venta=nu; });
+    (mine.ventas||[]).forEach(x=>{ if(x.enPlan===old) x.enPlan=nu; if(x.plan&&x.plan.de) x.plan.de=x.plan.de.map(z=>z===old?nu:z); });
     avisos.push(`Tu venta ${old} quedó como ${nu} (la otra persona usó el mismo número).`); }
   if(out.cfg) out.cfg.nextV=Math.max(out.cfg.nextV||0,maxV);
   // 2. listas con id
@@ -1195,7 +1203,7 @@ function mergeDocs(base,mine,theirs,sinBase){
       const jt=J(T[Ti.get(id)]);
       if(jt===B.get(id)) T[Ti.get(id)]=x;                             // solo lo cambié yo
       else if(jt!==jx) avisos.push(`${key==='bottles'?'Un perfume':key==='clientes'?'Un cliente':'Un registro'} lo cambiaron los dos al mismo tiempo: quedó lo de la otra persona.`); }
-    if(!sinBase) for(const [id,jb] of B) if(!M.has(id)&&Ti.has(id)&&J(T[Ti.get(id)])===jb){ const i=T.findIndex(x=>x.id===id); if(i>=0) T.splice(i,1); } // lo borré yo
+    if(!sinBase) for(const [id,jb] of B) if(!M.has(id)){ const i=T.findIndex(x=>x.id===id); if(i>=0&&J(T[i])===jb) T.splice(i,1); } // lo borré yo
   }
   // 3. listas sin id: se comparan registros completos
   for(const key of MERGE_LIST){
@@ -1207,6 +1215,14 @@ function mergeDocs(base,mine,theirs,sinBase){
   // 4. ajustes y memoria de la IA: lo que cambié yo
   for(const key of ['cfg','iaMem']){ const b=base[key]||{}, m=mine[key]||{}; out[key]=out[key]||{};
     for(const k of Object.keys(m)) if(J(m[k])!==J(b[k])) out[key][k]=m[k]; }
+  // 4b. insumos: cada teléfono descuenta lo suyo, así que el stock se junta por diferencias
+  if(mine.insumos||theirs.insumos){ const bI=new Map((base.insumos||[]).map(x=>[x.id,x])); out.insumos=JSON.parse(J(theirs.insumos||[]));
+    for(const x of mine.insumos||[]){ const b=bI.get(x.id), tt=out.insumos.find(y=>y.id===x.id);
+      if(!tt){ if(!b) out.insumos.push(x); continue; }
+      const {stock:ms,...mr}=x, {stock:bs,...br}=b||{}, {stock:ts,...tr}=tt;
+      if(b&&J(mr)!==J(br)&&J(tr)===J(br)) Object.assign(tt,mr);
+      if(ms!=null&&bs!=null&&ts!=null) tt.stock=Math.max(0,ts+(ms-bs)); else if(ts==null&&ms!=null) tt.stock=ms; }
+    if(!sinBase) out.insumos=out.insumos.filter(tt=>!(bI.has(tt.id)&&mine.insumos&&!mine.insumos.some(x=>x.id===tt.id)&&J(tt)===J(bI.get(tt.id)))); }
   // 5. un perfume vendido por los dos
   for(const v of out.ventas||[]) for(const it of v.items||[]) if(it.t==='b'){ const b=(out.bottles||[]).find(x=>x.id===it.ref); if(b&&b.venta&&b.venta!==v.id) avisos.push(`El perfume ${b.name} quedó en dos ventas (${b.venta} y ${v.id}): revisa y anula una.`); }
   return {doc:out,avisos:[...new Set(avisos)]};
@@ -1632,7 +1648,7 @@ function iaDone(rec){ if(ui.iaCur==null||!ui.ia||!ui.ia.acciones) return; const 
 const IA_SAVES={saveSale:'ventas',paySave:'pagos',saveGasto:'gastos',saveMov:'movs'};
 for(const k in IA_SAVES){ const f=A[k], arr=IA_SAVES[k]; A[k]=function(...args){
   // una botella que ya no está disponible (la vendió otra persona, o ya se usó) no se puede volver a vender
-  if(k==='saveSale'){ const malas=Object.keys(picks||{}).filter(id=>{ const [bid,ml]=id.split('|'), b=S.bottles.find(x=>x.id===bid); return !b||(ml?b.estado!=='Abierta':!['Stock','En camino'].includes(b.estado)); });
+  if(k==='saveSale'){ const malas=Object.keys(picks||{}).filter(id=>{ const [bid,ml]=id.split('|'), b=S.bottles.find(x=>x.id===bid); return !b||(ml?b.estado!=='Abierta':!['Stock','En camino','Revisar'].includes(b.estado)); });
     if(malas.length){ for(const id of malas) delete picks[id]; toast('Un perfume ya no está disponible (se vendió recién). Revisa la venta.'); render(); return; } }
   const deIA=ui.iaCur!=null&&ui.flowFrom==='f_ia'&&tab.startsWith('f_');
   const favor=()=>S.clientes.reduce((s,x)=>s+(x.favor||0),0), before=S[arr].length, f0=favor(); const r=f.apply(this,args);
@@ -1691,7 +1707,7 @@ A.iaMemDel=d=>{ const M=iaMem(), x=M[d.k][+d.i]; if(!x) return; commit('Borrado'
 
 
 // versión visible al final de Ajustes, para saber si el teléfono ya tiene la última
-const APP_VER='19-10 18:33';
+const APP_VER='19-10 18:49';
 
 /* ---------- Ajustes: lista agrupada, cada cosa se edita en su propia hoja ---------- */
 const AJ_MSG={antes:['Antes de que venza','Se manda unos días antes del vencimiento.'],hoy:['El día que vence','Se manda el mismo día del vencimiento.'],atrasada:['Cuota atrasada','Para cuando ya pasó la fecha.']};
@@ -1802,7 +1818,7 @@ A.fixFile=()=>{ const inp=document.createElement('input'); inp.type='file'; inp.
   inp.onchange=async()=>{ const f=inp.files[0]; if(!f) return; let x; try{ x=JSON.parse(await f.text()); }catch(e){ toast('Ese archivo no es un arreglo de Pasnó'); return; }
     const fx=FIXES.find(z=>z.id===x.fix); if(!fx){ toast('Ese archivo no es un arreglo de Pasnó'); return; }
     S.cfg.fixes=S.cfg.fixes||[]; if(S.cfg.fixes.includes(fx.id)){ toast('Ese arreglo ya estaba aplicado'); return; }
-    try{ commit(`Arreglo aplicado: ${fx.id}`, ()=>{ fx.run(x.datos||{}); S.cfg.fixes.push(fx.id); }); }catch(e){ console.error(e); toast('No se pudo aplicar: '+e.message); } };
+    const antes=JSON.stringify(S); try{ commit(`Arreglo aplicado: ${fx.id}`, ()=>{ fx.run(x.datos||{}); S.cfg.fixes.push(fx.id); }); }catch(e){ S=JSON.parse(antes); render(); console.error(e); toast('No se pudo aplicar (no se cambió nada): '+e.message); } };
   inp.click(); };
 const _vAjustesFix=vAjustes;
 vAjustes=function(){ const h=_vAjustesFix(); if(!(me&&/^csaavedrana@/i.test(me.email||''))) return h;
@@ -1818,10 +1834,10 @@ function deudasCli(kid){ const {paid}=idx();
   const porVenta=new Map(); for(const c of cs) porVenta.set(c.venta,(porVenta.get(c.venta)||0)+saldoC(c,paid));
   return {cs,porVenta,total:cs.reduce((a,c)=>a+saldoC(c,paid),0)}; }
 const ventaLab=v=>v.plan?`Plan de pago (${v.plan.de.join(' + ')})`:(v.items.filter(i=>i.t!=='x').map(i=>i.nombre).join(', ')||'Venta sin detalle');
-function planFechas(primera,n,dia){ const d=D(primera), out=[primera]; for(let i=1;i<n;i++) out.push(dueIn(d.getUTCFullYear(),d.getUTCMonth()+i,dia||null)); return out; }
+function planFechas(primera,n,dia){ const d=D(primera), out=[primera], dd=dia||+primera.slice(8,10)||null; for(let i=1;i<n;i++) out.push(dueIn(d.getUTCFullYear(),d.getUTCMonth()+i,dd)); return out; }
 function vPlanSheet(s){
   const k=S.clientes.find(x=>x.id===s.id); if(!k) return '';
-  const {porVenta,total}=deudasCli(k.id), n=ui.planN||4, primera=V('plf',nextMonthDue(k.dia)), ms=split(total,n), fs=planFechas(primera,n,k.dia);
+  const {porVenta,total}=deudasCli(k.id), n=ui.planN||4, primera=V('plf','')||nextMonthDue(k.dia), ms=split(total,n), fs=planFechas(primera,n,k.dia);
   const iguales=ms.every(m=>m===ms[0]);
   return `<div class="grab"></div><h2 style="margin:0">Plan de cuotas para ${esc(saludo(k.nombre))}</h2>
   <p class="note" style="margin:0">Junta todo lo que debe en cuotas nuevas. Lo que ya pagó queda igual.</p>
@@ -1835,7 +1851,7 @@ A.planOpen=d=>{ ui.sheet={t:'plan',id:d.id}; ui.planN=null; clearForm('plf'); re
 A.planN=d=>{ ui.planN=+d.v; render(); };
 A.planSave=d=>{ const k=S.clientes.find(x=>x.id===d.id); if(!k) return;
   const {paid}=idx(), {cs,porVenta,total}=deudasCli(k.id); if(!total) return;
-  const n=ui.planN||4, primera=V('plf',nextMonthDue(k.dia)), ms=split(total,n), fs=planFechas(primera,n,k.dia);
+  const n=ui.planN||4, primera=V('plf','')||nextMonthDue(k.dia), ms=split(total,n), fs=planFechas(primera,n,k.dia);
   const nv=Math.max(S.cfg.nextV||0,...S.ventas.map(v=>+String(v.id).slice(1)||0),0)+1, id='V'+pad(nv), de=[...porVenta.keys()];
   ui.sheet=null; clearForm('plf');
   commit(`Plan ${id}: ${n} cuota${n>1?'s':''} de ${clp(ms[0])}`, ()=>{
@@ -1845,7 +1861,7 @@ A.planSave=d=>{ const k=S.clientes.find(x=>x.id===d.id); if(!k) return;
     S.ventas.push({id,cliente:k.id,fecha:today(),vendedor:ui.vend||'Mati',total,pie:0,items:[],entrega:null,plan:{de,orig}});
     ms.forEach((m,i)=>S.cuotas.push({id:uid('C'),venta:id,n:i+1,monto:m,vence:fs[i]}));
     de.forEach(vid=>{ const v=S.ventas.find(x=>x.id===vid); if(v) v.enPlan=id; }); }); };
-A.planUndo=d=>{ const v=S.ventas.find(x=>x.id===d.id); if(!v||!v.plan) return; const {paid}=idx();
+A.planUndo=d=>{ const v=S.ventas.find(x=>x.id===d.id); if(!v||!v.plan) return; if(v.enPlan){ toast(`Este plan ya está dentro del plan ${v.enPlan}: deshaz ese primero.`); return; } const {paid}=idx();
   if(S.cuotas.some(c=>c.venta===v.id&&(paid.get(c.id)||0)>0)){ toast('El plan ya tiene pagos: no se puede deshacer.'); return; }
   ui.sheet=null;
   commit(`Plan ${v.id} deshecho`, ()=>{
@@ -1859,7 +1875,7 @@ vVentaSheet=function(v){
   if(v.plan){ const {paid}=idx(), cs=S.cuotas.filter(c=>c.venta===v.id).sort((a,b)=>a.n-b.n), pagado=cs.reduce((a,c)=>a+(paid.get(c.id)||0),0);
     return `<div class="grab"></div><div><h2 style="margin:0">${v.id} · Plan de pago</h2><p class="note" style="margin-top:4px">${esc(cliName(v.cliente))} · ${fmtDay(v.fecha)} · junta ${v.plan.de.join(' + ')}</p></div>
     <div class="sched">${cs.map(c=>{ const s=saldoC(c,paid); return `<div class="r"><span>Cuota ${c.n} · ${fmtDate(c.vence)}</span><b>${s?'debe '+clp(s):'✓ '+clp(c.monto)}</b></div>`; }).join('')}<div class="r tot"><span>Total · pagado ${clp(pagado)}</span><span>${clp(v.total)}</span></div></div>
-    ${pagado?'<p class="note">Ya tiene pagos, así que no se puede deshacer.</p>':`<button class="btn ghost block" data-a="planUndo" data-id="${v.id}">Deshacer el plan (vuelven las cuotas de antes)</button>`}
+    ${v.enPlan?`<p class="note">Este plan quedó dentro del plan ${v.enPlan}.</p>`:pagado?'<p class="note">Ya tiene pagos, así que no se puede deshacer.</p>':`<button class="btn ghost block" data-a="planUndo" data-id="${v.id}">Deshacer el plan (vuelven las cuotas de antes)</button>`}
     <button class="btn ghost block" data-a="closeSheet">Cerrar</button>`; }
   let h=_vVentaSheetPlan(v);
   if(v.enPlan) h=h.replace(/<div class="acts"><button class="btn ghost" data-a="vAct" data-v="editar">[\s\S]*?<\/div>/,`<p class="note">Lo que faltaba pagar de esta compra pasó al plan ${v.enPlan}. Para cambiarla, primero deshaz el plan.</p>`).replace(/<button class="btn sm ghost" data-a="swapAsk"[^>]*>Cambiar<\/button>/g,'');
@@ -1868,7 +1884,8 @@ vVentaSheet=function(v){
 const _vClientePlan=vCliente;
 vCliente=function(){ let h=_vClientePlan(); const k=S.clientes.find(x=>x.id===ui.cliId); if(!k) return h;
   const {porVenta,total}=deudasCli(k.id);
-  if(total>0){ const lab=porVenta.size>1?'Juntar sus deudas en un plan de cuotas':'Cambiar sus cuotas (nuevo plan)';
+  const soloPlan=porVenta.size===1&&(S.ventas.find(v=>v.id===[...porVenta.keys()][0])||{}).plan;
+  if(total>0&&!soloPlan){ const lab=porVenta.size>1?'Juntar sus deudas en un plan de cuotas':'Cambiar sus cuotas (nuevo plan)';
     const btn=`<button class="btn ghost block" style="margin-top:8px" data-a="planOpen" data-id="${k.id}">${lab}</button>`;
     h=h.includes('>WhatsApp</a></div>')?h.replace('>WhatsApp</a></div>','>WhatsApp</a></div>'+btn):h.replace('<h3>Compras</h3>',btn+'<h3>Compras</h3>'); }
   for(const v of S.ventas.filter(x=>x.cliente===k.id&&x.plan)) h=h.replace(`data-id="${v.id}"><div class="main"><div class="t" style="white-space:normal">Venta sin detalle</div>`,`data-id="${v.id}"><div class="main"><div class="t" style="white-space:normal">${esc(ventaLab(v))}</div>`);
@@ -1928,7 +1945,7 @@ function cuotasPend(vid){ const {paid}=idx(); return S.cuotas.filter(c=>c.venta=
 const _vVentaSheetFechas=vVentaSheet;
 vVentaSheet=function(v){
   const pend=cuotasPend(v.id), k=S.clientes.find(x=>x.id===v.cliente)||{};
-  if(ui.vAct==='fechas'&&pend.length){ const {paid}=idx(), primera=V('fcq',pend[0].vence||nextMonthDue(k.dia)), fs=planFechas(primera,pend.length,k.dia);
+  if(ui.vAct==='fechas'&&pend.length){ const {paid}=idx(), primera=V('fcq','')||pend[0].vence||nextMonthDue(k.dia), fs=planFechas(primera,pend.length,k.dia);
     return `<div class="grab"></div><div><h2 style="margin:0">${v.id} · ${esc(cliName(v.cliente))}</h2><p class="note" style="margin-top:4px">Cambiar fechas de cobro</p></div>
     <div class="field"><label for="fcq">La próxima cuota vence el</label><input id="fcq" data-k data-r type="date" value="${esc(primera)}">
     <span class="s">Las siguientes se corren mes a mes. Si ya debía este mes o antes, pon esa fecha y saldrá como atrasada.</span></div>
@@ -1939,7 +1956,8 @@ vVentaSheet=function(v){
     h=h.includes('data-a="closeSheet">Cerrar</button>')?h.replace(/<button class="btn ghost block" data-a="closeSheet">Cerrar<\/button>(?![\s\S]*data-a="closeSheet">Cerrar<\/button>)/,btn+'<button class="btn ghost block" data-a="closeSheet">Cerrar</button>'):h+btn; }
   return h; };
 A.fechasSave=d=>{ const v=S.ventas.find(x=>x.id===d.id); if(!v) return; const pend=cuotasPend(v.id), k=S.clientes.find(x=>x.id===v.cliente)||{};
-  const fs=planFechas(V('fcq',pend[0].vence||nextMonthDue(k.dia)),pend.length,k.dia); ui.vAct=null; clearForm('fcq');
+  if(!pend.length){ ui.vAct=null; toast('Ya no le quedan cuotas pendientes'); render(); return; }
+  const fs=planFechas(V('fcq','')||pend[0].vence||nextMonthDue(k.dia),pend.length,k.dia); ui.vAct=null; clearForm('fcq');
   commit(`Fechas de ${v.id} actualizadas`, ()=>{ pend.forEach((c,i)=>{ c.vence=fs[i]; }); }); };
 
 
@@ -1972,7 +1990,7 @@ A.consSave=function(...a){ const g0=(S.consignas||[]).length; const r=_consSaveI
   return r; };
 // pantalla
 function vInsumos(){ const L=insumos();
-  return `${topbar('Insumos','stock')}<p class="note" style="margin-top:0">Frascos, etiquetas, bolsas… Se descuentan solos cuando vendes o mandas decants, y te aviso cuando sea buen momento para reponer.</p>
+  return `${topbar('Insumos','stock')}<p class="note" style="margin-top:0">Frascos, etiquetas, bolsas, cajas… Se descuentan solos cuando vendes o mandas decants, y te aviso cuando sea buen momento para reponer.</p>
   <div class="list">${L.map(x=>{ const e=insEstado(x);
     return `<button class="rowbtn" data-a="insAbrir" data-id="${x.id}"><div class="main"><div class="t">${esc(x.nombre)}</div><div class="s">${esc(INS_USOS[x.usa]||'')}${e.uso?` · usaste ${e.uso} en 30 días`:''}</div></div>
     <div style="text-align:right">${e.nuevo?'<span class="chip n">anota cuántos tienes</span>':`<div class="amt">${x.stock}</div>${e.alerta?`<span class="chip w">${x.stock<=0?'se acabó':e.dias!=null?'~'+e.dias+' días':'reponer'}</span>`:e.dias!=null?`<span class="s">~${e.dias} días</span>`:''}`}</div></button>`; }).join('')}</div>
@@ -1997,7 +2015,7 @@ A.insGuardar=d=>{ const s=ui.sheet; if(!s) return;
     const usa=V('iu',(insumos().find(x=>x.id===d.id)||{}).usa||'mano'), minv=V('imin',null), min=minv==null?undefined:(minv.trim()===''?null:num(minv));
     ui.sheet=null; commit(d.id==='nuevo'?`${nombre} agregado`:`${nombre} guardado`, ()=>{ if(d.id==='nuevo') insumos().push({id:uid('N'),nombre,usa,stock:null,min:min??null}); else { const x=insumos().find(i=>i.id===d.id); x.nombre=nombre; x.usa=usa; if(min!==undefined) x.min=min; } }); clearForm('in','iu','imin'); return; }
   const q=num(V('iq')); const x=insumos().find(i=>i.id===d.id); if(!x) return;
-  if(s.modo==='contar'){ if(V('iq').trim()===''){ toast('Anota cuántos tienes'); return; } ui.sheet=null; commit(`${x.nombre}: ${q}`, ()=>{ const antes=x.stock; x.stock=q; const L=S.insumoLog||(S.insumoLog=[]); L.push({f:today(),id:x.id,d:0,m:'conteo',antes}); }); clearForm('iq'); return; }
+  if(s.modo==='contar'){ if(!/\d/.test(V('iq'))){ toast('Anota cuántos tienes (un número)'); return; } ui.sheet=null; commit(`${x.nombre}: ${q}`, ()=>{ const antes=x.stock; x.stock=q; const L=S.insumoLog||(S.insumoLog=[]); L.push({f:today(),id:x.id,d:0,m:'conteo',antes}); }); clearForm('iq'); return; }
   if(!q){ toast('¿Cuántos compraste?'); return; } const m=num(V('im')); ui.sheet=null;
   commit(`+${q} ${x.nombre}`, ()=>{ if(x.stock==null) x.stock=0; insMover(x.id,q,'compra'); if(m) addGasto(INS_CAT[x.usa]||'Otro',m,`${x.nombre} (${q})`); }); clearForm('iq','im'); };
 A.insBorrar=d=>{ ui.sheet=null; commit('Insumo quitado', ()=>{ S.insumos=insumos().filter(x=>x.id!==d.id); }); };
@@ -2014,6 +2032,38 @@ vInicio=function(){ const h=_vInicioIns(), al=insAlertas(); if(!al.length) retur
   const box=`<button class="rowbtn" style="margin:10px 0;border:1px solid var(--line);border-radius:14px;background:var(--amber-soft)" data-a="insumos"><div class="main"><div class="t">Buen momento para reponer</div><div class="s" style="white-space:normal">${txt}</div></div><span class="s">›</span></button>`;
   const i=h.indexOf('<h2'); return i<0?h+box:h.slice(0,i)+box+h.slice(i); };
 SCREENS.inicio=vInicio;
+
+
+/* ===== src/13_stock_ux.js ===== */
+/* ---------- Stock en 4 pestañas: Perfumes · Decants · Pedidos · Consignación ----------
+   Cada pestaña muestra solo lo suyo. La búsqueda va primero (lo más usado: "¿tengo este perfume?").
+   Los insumos (frascos, bolsas, cajas…) sirven para todas las ventas: van como botón arriba, con aviso si hay que reponer. */
+function vStockPerfumes(k){
+  const q=norm(V('stq')), f=['Todo','En camino','Por entregar'].includes(ui.stockF)?ui.stockF:'Todo', match=b=>!q||norm(b.name).includes(q);
+  const sets={'Todo':S.bottles.filter(b=>b.estado==='Stock'),'En camino':S.bottles.filter(b=>b.estado==='En camino'),'Por entregar':S.bottles.filter(b=>b.porEntregar)};
+  const list=sets[f].filter(match), chips=[['Todo',k.nStock]].concat(k.nCamino?[['En camino',k.nCamino]]:[]).concat(k.nPorEntregar?[['Por entregar',k.nPorEntregar]]:[]);
+  return `<input id="stq" data-k data-r class="search" style="margin-top:12px" placeholder="Buscar perfume" value="${esc(V('stq'))}" autocomplete="off">
+  ${chips.length>1?`<div class="chips" style="margin-top:10px">${chips.map(([x,n])=>`<div class="seg"><button data-a="stockF" data-v="${x}" ${pressed(f===x)}>${x} (${n})</button></div>`).join('')}</div>`:''}
+  <div class="list" style="margin-top:12px">${list.map(bottleRow).join('')||`<div class="empty">${q?'Sin resultados.':f==='En camino'?'Nada en camino.':'No hay perfumes en stock.'}</div>`}</div>
+  ${f==='Todo'?`<button class="btn ghost block" style="margin-top:12px" data-a="share" data-k="stock">Compartir lista de stock</button>`:''}
+  <p class="note">Toca un perfume para venderlo, abrirlo para decants, regalarlo o darlo de baja. Para agregar perfumes usa el botón +.</p>`; }
+function vStockDecants(){
+  const q=norm(V('stq')), ab=S.bottles.filter(b=>b.estado==='Abierta'&&(!q||norm(b.name).includes(q)));
+  return `<input id="stq" data-k data-r class="search" style="margin-top:12px" placeholder="Buscar decant" value="${esc(V('stq'))}" autocomplete="off">
+  <div class="list" style="margin-top:12px">${ab.map(abiertaRow).join('')||`<div class="empty">${q?'Sin resultados.':'Ninguna botella abierta. En Perfumes, toca una y elige "Abrir para decants".'}</div>`}</div>
+  <p class="note">Cada botella abierta lleva la cuenta de los decants que vendes. Un 10 ml cuenta como 2 de 5 ml.</p>`; }
+vStock=function(){ const k=calc(), seg=['stock','decants','pedidos','consigna'].includes(ui.stockSeg)?ui.stockSeg:'stock', al=S.insumos?S.insumos.filter(x=>insEstado(x).alerta).length:0;
+  const tabs=[['stock','Perfumes',`${k.nStock}`],['decants','Decants',`${k.nAbiertas} abiertas`],['pedidos','Pedidos',k.deuda?`debes ${clp(k.deuda)}`:k.nCamino?`${k.nCamino} en camino`:''],['consigna','Consignación',k.nConsig?`${k.nConsig} afuera`:'']];
+  const insBtn=`<button class="btn ghost sm" style="margin-left:auto;flex-shrink:0;position:relative;display:flex;align-items:center;gap:6px" data-a="insumos"><svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 8l9-5 9 5v8l-9 5-9-5z"/><path d="M3 8l9 5 9-5M12 13v8"/></svg>Insumos${al?`<span style="position:absolute;top:-6px;right:-6px;background:var(--warn);color:#fff;border-radius:999px;font-size:11px;padding:1px 6px">${al}</span>`:''}</button>`;
+  return `<div class="topbar"><h2>Stock</h2>${insBtn}</div>
+  <p class="note" style="margin:-6px 0 8px">${clp(k.stock)} invertidos en perfumes y decants</p>
+  <div class="seg4" role="group" aria-label="Sección">${tabs.map(([s,l,sub])=>`<button data-a="stockSeg" data-seg="${s}" ${pressed(seg===s)}>${l}${sub?`<small>${sub}</small>`:''}</button>`).join('')}</div>
+  ${seg==='stock'?vStockPerfumes(k):seg==='decants'?vStockDecants():seg==='pedidos'?vPedidos(k):vConsigna()}`; };
+SCREENS.stock=vStock;
+// "Abiertas" desde otras pantallas lleva a la pestaña Decants
+const _stockF13=A.stockF; A.stockF=d=>{ if(d.v==='Abiertas'){ ui.stockSeg='decants'; ui.stockF='Todo'; if(tab!=='stock') goTo('stock'); else render(); return; } return _stockF13(d); };
+const _stockSeg13=A.stockSeg; A.stockSeg=d=>{ clearForm('stq'); return _stockSeg13(d); };
+const _back13=A.back; A.back=function(d,...r){ if(d&&d.seg) ui.stockSeg=d.seg; return _back13.call(this,d,...r); };
 
 
 boot();
