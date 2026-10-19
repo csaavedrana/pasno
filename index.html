@@ -1707,7 +1707,7 @@ A.iaMemDel=d=>{ const M=iaMem(), x=M[d.k][+d.i]; if(!x) return; commit('Borrado'
 
 
 // versión visible al final de Ajustes, para saber si el teléfono ya tiene la última
-const APP_VER='19-10 18:49';
+const APP_VER='19-10 20:29';
 
 /* ---------- Ajustes: lista agrupada, cada cosa se edita en su propia hoja ---------- */
 const AJ_MSG={antes:['Antes de que venza','Se manda unos días antes del vencimiento.'],hoy:['El día que vence','Se manda el mismo día del vencimiento.'],atrasada:['Cuota atrasada','Para cuando ya pasó la fecha.']};
@@ -2064,6 +2064,74 @@ SCREENS.stock=vStock;
 const _stockF13=A.stockF; A.stockF=d=>{ if(d.v==='Abiertas'){ ui.stockSeg='decants'; ui.stockF='Todo'; if(tab!=='stock') goTo('stock'); else render(); return; } return _stockF13(d); };
 const _stockSeg13=A.stockSeg; A.stockSeg=d=>{ clearForm('stq'); return _stockSeg13(d); };
 const _back13=A.back; A.back=function(d,...r){ if(d&&d.seg) ui.stockSeg=d.seg; return _back13.call(this,d,...r); };
+
+
+/* ===== src/14_ventas_historial.js ===== */
+/* ---------- Venta en 1 cuota que se paga después ----------
+   En "Forma de pago", además de Contado: "Paga después" = una sola cuota que vence al inicio del mes
+   siguiente (o el día de cobro del cliente). Queda en Cobrar y en los recordatorios. */
+const _startFlow14=startFlow; startFlow=function(f,extra={}){ if(f==='f_vender') ui.despues=false; return _startFlow14(f,extra); };
+const _ncuotas14=A.ncuotas; A.ncuotas=d=>{ ui.despues=false; return _ncuotas14(d); };
+A.pagaDespues=()=>{ ui.n=1; ui.despues=true; render(); };
+const _vVender14=vVender;
+vVender=function(){ let h=_vVender14(); if(!h.includes('data-a="ncuotas"')) return h;
+  const desp=ui.despues&&ui.n===1;
+  h=h.replace(/(<button data-a="ncuotas" data-n="1" )aria-pressed="(true|false)"(>Contado<\/button>)/,`$1aria-pressed="${ui.n===1&&!desp}"$3<button data-a="pagaDespues" aria-pressed="${desp}">Paga después</button>`);
+  if(desp){ const k=S.clientes.find(c=>c.id===ui.cliPick), dia=k?k.dia:num(V('ncd'))||null, fecha=V('sf',today()), vence=schedule(fecha,1,dia)[0];
+    const tot=(h.match(/Guardar venta · ([^<]+)</)||[])[1]||'';
+    h=h.replace(/<div class="field" style="margin-top:12px"><span class="flab">¿Cómo te pagó\?<\/span>[\s\S]*?<\/div><\/div>/,'');
+    h=h.replace(/<div class="sched" style="margin-top:14px">[\s\S]*?<\/div>(\s*<p class="note">Fecha de la venta)/,`<div class="sched" style="margin-top:14px"><div class="r"><span>Cuota única · ${fmtDay(vence)}</span><b>${esc(tot)}</b></div><span class="s">Te paga todo junto ${dia?'el día '+dia+' del mes siguiente':'el 5° día hábil del mes siguiente'}. Si es otra fecha, después usa "Cambiar fechas de cobro".</span></div>$1`); }
+  return h; };
+SCREENS.f_vender=vVender;
+const _saveSale14=A.saveSale;
+A.saveSale=function(...a){ const desp=ui.despues&&ui.n===1, n0=S.ventas.length; const r=_saveSale14.apply(this,a);
+  if(desp&&S.ventas.length>n0){ const v=S.ventas[S.ventas.length-1], k=S.clientes.find(c=>c.id===v.cliente)||{}, c=S.cuotas.find(x=>x.venta===v.id&&x.n===1);
+    if(c){ S.pagos=S.pagos.filter(p=>p.cuota!==c.id); c.vence=schedule(v.fecha||today(),1,k.dia)[0]; save(); render(); toast(`Venta ${v.id}: te paga ${clp(c.monto)} el ${fmtDate(c.vence)}`,true); } }
+  ui.despues=false; return r; };
+
+/* ---------- Encontrar lo que ya se vendió ----------
+   Stock → Perfumes: filtro "Vendidos", y al buscar también aparecen los vendidos (a quién y cuándo). */
+const VENDIDO_EST=['Vendido','Regalo','Uso propio','Pérdida','Comisión','Agotada','Devuelta'];
+function vendidoRow(b){ const v=b.venta&&S.ventas.find(x=>x.id===b.venta), quien=v?cliName(v.cliente):b.estado==='Vendido'?'':b.estado.toLowerCase();
+  const det=[b.ml?b.ml+' ml':'', v?`vendido a ${esc(quien)}`:esc(quien), (v&&v.fecha)||b.fSalida?fmtDate((v&&v.fecha)||b.fSalida):''].filter(Boolean).join(' · ');
+  return `<button class="rowbtn" ${v?`data-a="venta" data-id="${v.id}"`:`data-a="bottle" data-id="${b.id}"`}><div class="main"><div class="t">${esc(b.name)}</div><div class="s">${det}</div></div>${v?`<span class="s">${v.id} ›</span>`:''}</button>`; }
+const _vStockPerfumes14=vStockPerfumes;
+vStockPerfumes=function(k){ const q=norm(V('stq'));
+  if(ui.stockF==='Vendidos'){ const L=S.bottles.filter(b=>VENDIDO_EST.includes(b.estado)&&(!q||norm(b.name).includes(q)||(b.venta&&norm(cliName((S.ventas.find(v=>v.id===b.venta)||{}).cliente)).includes(q))))
+      .sort((a,b)=>(((S.ventas.find(v=>v.id===b.venta)||{}).fecha)||b.fSalida||'').localeCompare(((S.ventas.find(v=>v.id===a.venta)||{}).fecha)||a.fSalida||'')||String(b.venta||'').localeCompare(String(a.venta||'')));
+    let h=_vStockPerfumes14({...k}); // para mantener buscador y filtros
+    h=h.replace(/<div class="list" style="margin-top:12px">[\s\S]*?<\/div>\s*<button class="btn ghost block"[\s\S]*?<\/button>/,'').replace(/<div class="list" style="margin-top:12px">[\s\S]*?<\/div>(\s*<p class="note">)/,'$1');
+    h=h.replace('placeholder="Buscar perfume"','placeholder="Buscar perfume o cliente"');
+    return h.replace(/<p class="note">[^<]*<\/p>\s*$/,'')+`<div class="list" style="margin-top:12px">${L.slice(0,60).map(vendidoRow).join('')||'<div class="empty">Sin resultados.</div>'}</div>${L.length>60?`<p class="note">Mostrando 60 de ${L.length}. Busca para encontrar uno en particular.</p>`:''}`; }
+  let h=_vStockPerfumes14(k);
+  if(q){ const vend=S.bottles.filter(b=>VENDIDO_EST.includes(b.estado)&&norm(b.name).includes(q)).slice(0,10);
+    if(vend.length) h=h.replace(/(<p class="note">Toca un perfume)/,`<h3>Ya vendidos</h3><div class="list">${vend.map(vendidoRow).join('')}</div>$1`); }
+  return h; };
+// el filtro "Vendidos" siempre aparece
+const _vStock14=vStock;
+vStock=function(){ let h=_vStock14(); if(!(ui.stockSeg==='stock'||!['decants','pedidos','consigna'].includes(ui.stockSeg))) return h;
+  const btn=`<div class="seg"><button data-a="stockF" data-v="Vendidos" ${pressed(ui.stockF==='Vendidos')}>Vendidos</button></div>`;
+  if(h.includes('<div class="chips" style="margin-top:10px">')) h=h.replace(/(<div class="chips" style="margin-top:10px">[\s\S]*?)(<\/div>\s*<div class="list")/,`$1${btn}$2`);
+  else h=h.replace(/(<input id="stq"[^>]*>)/,`$1<div class="chips" style="margin-top:10px"><div class="seg"><button data-a="stockF" data-v="Todo" ${pressed(ui.stockF!=='Vendidos')}>Todo (${calc().nStock})</button></div>${btn}</div>`);
+  return h; };
+SCREENS.stock=vStock;
+const _stockF14=A.stockF; A.stockF=d=>{ if(d.v==='Vendidos'){ ui.stockF='Vendidos'; ui.stockSeg='stock'; if(tab!=='stock') goTo('stock'); else render(); return; } return _stockF14(d); };
+
+/* ---------- Plata → Historial: también ventas y compras ---------- */
+const _vHistorial14=vHistorial;
+vHistorial=function(){ const f=ui.histF, chips=['Todo','Ventas','Compras','Gastos','Movimientos'];
+  const chipHtml=`<div class="chips" style="margin-top:12px">${chips.map(x=>`<div class="seg"><button data-a="histF" data-v="${x}" ${pressed(f===x)}>${x}</button></div>`).join('')}</div>`;
+  if(f==='Ventas'){ const q=norm(V('hq')), L=S.ventas.filter(v=>!v.plan&&(!q||norm(cliName(v.cliente)).includes(q)||v.items.some(i=>norm(i.nombre).includes(q))||norm(v.id).includes(q)))
+      .sort((a,b)=>(b.fecha||'0').localeCompare(a.fecha||'0')||b.id.localeCompare(a.id));
+    return chipHtml+`<input id="hq" data-k data-r class="search" style="margin-top:12px" placeholder="Buscar cliente o perfume" value="${esc(V('hq'))}" autocomplete="off">
+    <div class="list" style="margin-top:12px">${L.slice(0,80).map(v=>`<button class="rowbtn" data-a="venta" data-id="${v.id}"><div class="main"><div class="t" style="white-space:normal">${esc(cliName(v.cliente))}</div><div class="s" style="white-space:normal">${v.id} · ${v.fecha?fmtDate(v.fecha):'sin fecha'} · ${esc(v.items.filter(i=>i.t!=='x').map(i=>i.nombre).join(', ')||'sin detalle')}</div></div><span class="amt">${clp(v.total)}</span></button>`).join('')||'<div class="empty">Sin resultados.</div>'}</div>
+    ${L.length>80?`<p class="note">Mostrando 80 de ${L.length}. Busca para encontrar una en particular.</p>`:''}<p class="note">Toca una venta para ver sus cuotas, editarla o anularla.</p>`; }
+  if(f==='Compras'){ const cs=[...S.compras].sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||''));
+    return chipHtml+`<div class="list" style="margin-top:12px">${cs.map(c=>{ const bs=S.bottles.filter(b=>b.compra===c.id), names=[...new Set(bs.map(b=>b.name))];
+      return `<button class="rowbtn" data-a="stockSeg" data-seg="pedidos"><div class="main"><div class="t">${esc(provName(c.prov))}</div><div class="s" style="white-space:normal">${fmtDate(c.fecha)} · ${c.estado}${names.length?' · '+esc(names.slice(0,3).join(', '))+(names.length>3?'…':''):''}</div></div><span class="amt">${clp(c.total)}</span></button>`; }).join('')||'<div class="empty">Sin compras anotadas en la app. Las del Excel están en Stock → Perfumes → Vendidos.</div>'}</div>
+    <p class="note">Las compras anotadas desde la app. Para ver o recibir un pedido ve a Stock → Pedidos.</p>`; }
+  return _vHistorial14().replace(/<div class="chips" style="margin-top:12px">[\s\S]*?<\/div><\/div>/,chipHtml); };
+const _stockSeg14=A.stockSeg; A.stockSeg=d=>{ if(tab!=='stock'){ ui.stockSeg=d.seg; goTo('stock'); return; } return _stockSeg14(d); };
 
 
 boot();
