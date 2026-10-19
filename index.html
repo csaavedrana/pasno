@@ -1707,7 +1707,7 @@ A.iaMemDel=d=>{ const M=iaMem(), x=M[d.k][+d.i]; if(!x) return; commit('Borrado'
 
 
 // versión visible al final de Ajustes, para saber si el teléfono ya tiene la última
-const APP_VER='19-10 20:29';
+const APP_VER='19-10 20:32';
 
 /* ---------- Ajustes: lista agrupada, cada cosa se edita en su propia hoja ---------- */
 const AJ_MSG={antes:['Antes de que venza','Se manda unos días antes del vencimiento.'],hoy:['El día que vence','Se manda el mismo día del vencimiento.'],atrasada:['Cuota atrasada','Para cuando ya pasó la fecha.']};
@@ -2068,7 +2068,7 @@ const _back13=A.back; A.back=function(d,...r){ if(d&&d.seg) ui.stockSeg=d.seg; r
 
 /* ===== src/14_ventas_historial.js ===== */
 /* ---------- Venta en 1 cuota que se paga después ----------
-   En "Forma de pago", además de Contado: "Paga después" = una sola cuota que vence al inicio del mes
+   En "Forma de pago": Contado (ya pagó) · "1 cuota" = una sola cuota que vence al inicio del mes
    siguiente (o el día de cobro del cliente). Queda en Cobrar y en los recordatorios. */
 const _startFlow14=startFlow; startFlow=function(f,extra={}){ if(f==='f_vender') ui.despues=false; return _startFlow14(f,extra); };
 const _ncuotas14=A.ncuotas; A.ncuotas=d=>{ ui.despues=false; return _ncuotas14(d); };
@@ -2076,11 +2076,11 @@ A.pagaDespues=()=>{ ui.n=1; ui.despues=true; render(); };
 const _vVender14=vVender;
 vVender=function(){ let h=_vVender14(); if(!h.includes('data-a="ncuotas"')) return h;
   const desp=ui.despues&&ui.n===1;
-  h=h.replace(/(<button data-a="ncuotas" data-n="1" )aria-pressed="(true|false)"(>Contado<\/button>)/,`$1aria-pressed="${ui.n===1&&!desp}"$3<button data-a="pagaDespues" aria-pressed="${desp}">Paga después</button>`);
+  h=h.replace(/(<button data-a="ncuotas" data-n="1" )aria-pressed="(true|false)"(>Contado<\/button>)/,`$1aria-pressed="${ui.n===1&&!desp}"$3<button data-a="pagaDespues" aria-pressed="${desp}">1 cuota</button>`);
   if(desp){ const k=S.clientes.find(c=>c.id===ui.cliPick), dia=k?k.dia:num(V('ncd'))||null, fecha=V('sf',today()), vence=schedule(fecha,1,dia)[0];
     const tot=(h.match(/Guardar venta · ([^<]+)</)||[])[1]||'';
     h=h.replace(/<div class="field" style="margin-top:12px"><span class="flab">¿Cómo te pagó\?<\/span>[\s\S]*?<\/div><\/div>/,'');
-    h=h.replace(/<div class="sched" style="margin-top:14px">[\s\S]*?<\/div>(\s*<p class="note">Fecha de la venta)/,`<div class="sched" style="margin-top:14px"><div class="r"><span>Cuota única · ${fmtDay(vence)}</span><b>${esc(tot)}</b></div><span class="s">Te paga todo junto ${dia?'el día '+dia+' del mes siguiente':'el 5° día hábil del mes siguiente'}. Si es otra fecha, después usa "Cambiar fechas de cobro".</span></div>$1`); }
+    h=h.replace(/<div class="sched" style="margin-top:14px">[\s\S]*?<\/div>(\s*<p class="note">Fecha de la venta)/,`<div class="sched" style="margin-top:14px"><div class="r"><span>Cuota 1 · ${fmtDay(vence)}</span><b>${esc(tot)}</b></div><span class="s">Te paga todo junto ${dia?'el día '+dia+' del mes siguiente':'el 5° día hábil del mes siguiente'}. Si es otra fecha, después usa "Cambiar fechas de cobro".</span></div>$1`); }
   return h; };
 SCREENS.f_vender=vVender;
 const _saveSale14=A.saveSale;
