@@ -1707,7 +1707,7 @@ A.iaMemDel=d=>{ const M=iaMem(), x=M[d.k][+d.i]; if(!x) return; commit('Borrado'
 
 
 // versión visible al final de Ajustes, para saber si el teléfono ya tiene la última
-const APP_VER='19-10 20:32';
+const APP_VER='20-10 19:50';
 
 /* ---------- Ajustes: lista agrupada, cada cosa se edita en su propia hoja ---------- */
 const AJ_MSG={antes:['Antes de que venza','Se manda unos días antes del vencimiento.'],hoy:['El día que vence','Se manda el mismo día del vencimiento.'],atrasada:['Cuota atrasada','Para cuando ya pasó la fecha.']};
@@ -2132,6 +2132,24 @@ vHistorial=function(){ const f=ui.histF, chips=['Todo','Ventas','Compras','Gasto
     <p class="note">Las compras anotadas desde la app. Para ver o recibir un pedido ve a Stock → Pedidos.</p>`; }
   return _vHistorial14().replace(/<div class="chips" style="margin-top:12px">[\s\S]*?<\/div><\/div>/,chipHtml); };
 const _stockSeg14=A.stockSeg; A.stockSeg=d=>{ if(tab!=='stock'){ ui.stockSeg=d.seg; goTo('stock'); return; } return _stockSeg14(d); };
+
+
+/* ===== src/15_consigna_anular.js ===== */
+/* ---------- Anular una venta de consignación ----------
+   Si se anula una venta que vino de un vendedor (ej: Chico), lo vendido vuelve a quedar "en su poder"
+   (no al stock de la casa), listo para marcarlo bien. Y al abrir la app se reparan ventas de consignación
+   anuladas antes de este arreglo: si un producto figura "vendido" pero su venta ya no existe, vuelve al vendedor. */
+function consignaVolver(i){ i.estado='fuera'; delete i.venta; delete i.vendidoEn; delete i.fechaFin;
+  if(i.t==='b'){ const b=S.bottles.find(x=>x.id===i.ref); if(b){ b.estado='Consignación'; b.venta=''; b.fSalida=null; } } }
+function repararConsigna(){ let n=0; const ids=new Set(S.ventas.map(v=>v.id));
+  for(const g of (S.consignas||[])) for(const i of g.items) if(i.estado==='vendido'&&i.venta&&!ids.has(i.venta)){ consignaVolver(i); n++; }
+  return n; }
+const _anular15=A.anular;
+A.anular=function(d,...r){ const v=S.ventas.find(x=>x.id===d.id), deCons=v&&v.consigna; const out=_anular15.call(this,d,...r);
+  if(deCons&&!S.ventas.some(x=>x.id===d.id)){ const n=repararConsigna(); if(n){ save(); render(); toast(`Venta ${d.id} anulada: ${n} producto${n>1?'s vuelven':' vuelve'} a ${esc((vendOf(deCons)||{}).nombre||'el vendedor')}`); } }
+  return out; };
+// reparación al abrir (y cada vez que llegan datos nuevos, por si otro teléfono anuló algo)
+setTimeout(()=>{ try{ if(S&&S.consignas&&repararConsigna()){ save(); render(); } }catch(e){} },5000);
 
 
 boot();
