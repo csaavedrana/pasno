@@ -1707,7 +1707,7 @@ A.iaMemDel=d=>{ const M=iaMem(), x=M[d.k][+d.i]; if(!x) return; commit('Borrado'
 
 
 // versión visible al final de Ajustes, para saber si el teléfono ya tiene la última
-const APP_VER='20-10 19:50';
+const APP_VER='21-10 20:29';
 
 /* ---------- Ajustes: lista agrupada, cada cosa se edita en su propia hoja ---------- */
 const AJ_MSG={antes:['Antes de que venza','Se manda unos días antes del vencimiento.'],hoy:['El día que vence','Se manda el mismo día del vencimiento.'],atrasada:['Cuota atrasada','Para cuando ya pasó la fecha.']};
@@ -2150,6 +2150,26 @@ A.anular=function(d,...r){ const v=S.ventas.find(x=>x.id===d.id), deCons=v&&v.co
   return out; };
 // reparación al abrir (y cada vez que llegan datos nuevos, por si otro teléfono anuló algo)
 setTimeout(()=>{ try{ if(S&&S.consignas&&repararConsigna()){ save(); render(); } }catch(e){} },5000);
+
+
+/* ===== src/16_aviso_duplicado.js ===== */
+/* ---------- Aviso de posible duplicado al anotar una compra ----------
+   Al escribir el nombre de un perfume en "Compré", si ya existe en la app (en stock, en camino, abierto
+   o vendido), se muestra cuál y a quién se vendió. No bloquea: si es una botella nueva, se sigue igual. */
+function yaExiste(nombre){ const q=norm(nombre); if(q.length<4) return [];
+  const pal=q.split(/\s+/).filter(w=>w.length>2);
+  return S.bottles.filter(b=>{ const n=norm(b.name); return n===q||(pal.length>=2&&pal.every(w=>n.includes(w)))||(q.length>=6&&n.includes(q)); })
+    .sort((a,b)=>(a.estado==='Stock'?0:1)-(b.estado==='Stock'?0:1)||String(b.fSalida||b.fCompra||'').localeCompare(String(a.fSalida||a.fCompra||''))); }
+const _vCompra16=vCompra;
+vCompra=function(){ let h=_vCompra16(); const L=yaExiste(V('bn').trim()); if(!L.length) return h;
+  const enCasa=L.filter(b=>['Stock','En camino','Abierta','Consignación','Revisar'].includes(b.estado)), vend=L.filter(b=>b.estado==='Vendido').slice(0,3);
+  const fila=b=>{ const v=b.venta&&S.ventas.find(x=>x.id===b.venta);
+    return `<div class="s" style="white-space:normal">• ${esc(b.name)} ${b.ml?b.ml+' ml':''} — ${b.estado==='Vendido'&&v?`vendido a <b>${esc(cliName(v.cliente))}</b>${v.fecha?' el '+fmtDate(v.fecha):''} (${v.id})`:b.estado==='Abierta'?'abierto para decants':b.estado.toLowerCase()}</div>`; };
+  if(!enCasa.length&&!vend.length) return h;
+  const box=`<div class="warnbox" style="margin-top:8px;display:grid;gap:4px"><b>Ojo: ya está en la app</b>${enCasa.map(fila).join('')}${vend.map(fila).join('')}
+    <span class="s">Si es una botella nueva, sigue nomás. Si solo querías ver si estaba anotado, búscalo en Stock → Perfumes (o en "Vendidos").</span></div>`;
+  return h.replace(/(<input id="bn"[^>]*><\/div>)/,'$1'+box); };
+SCREENS.f_compra=vCompra;
 
 
 boot();
