@@ -1707,7 +1707,7 @@ A.iaMemDel=d=>{ const M=iaMem(), x=M[d.k][+d.i]; if(!x) return; commit('Borrado'
 
 
 // versión visible al final de Ajustes, para saber si el teléfono ya tiene la última
-const APP_VER='21-10 20:29';
+const APP_VER='21-10 21:33';
 
 /* ---------- Ajustes: lista agrupada, cada cosa se edita en su propia hoja ---------- */
 const AJ_MSG={antes:['Antes de que venza','Se manda unos días antes del vencimiento.'],hoy:['El día que vence','Se manda el mismo día del vencimiento.'],atrasada:['Cuota atrasada','Para cuando ya pasó la fecha.']};
@@ -2170,6 +2170,46 @@ vCompra=function(){ let h=_vCompra16(); const L=yaExiste(V('bn').trim()); if(!L.
     <span class="s">Si es una botella nueva, sigue nomás. Si solo querías ver si estaba anotado, búscalo en Stock → Perfumes (o en "Vendidos").</span></div>`;
   return h.replace(/(<input id="bn"[^>]*><\/div>)/,'$1'+box); };
 SCREENS.f_compra=vCompra;
+
+
+/* ===== src/17_limpieza.js ===== */
+/* ---------- Limpieza por operaciones (arreglos de datos genéricos) ----------
+   Un archivo de arreglo puede traer "ops" en vez de un arreglo con código propio. Solo usa números de
+   registro (V…, B…), nunca nombres. Operaciones:
+     {borrarVenta:'V182'}              borra la venta, sus cuotas y sus pagos (no toca botellas)
+     {reasignar:{venta,de,a}}          la venta pasa a usar la botella "a" en vez de "de"
+     {borrarBotella:'B254'}            borra la botella y, si su pedido queda vacío, el pedido y sus deudas
+     {quitarPagos:'V165'}              borra los pagos de esa venta (queda como deuda)
+   Antes de aplicar se prueba en una copia: si algo no calza, no se cambia nada. */
+function aplicarOps(D,ops){ const log=[];
+  const venta=id=>D.ventas.find(v=>v.id===id), bot=id=>D.bottles.find(b=>b.id===id);
+  for(const op of ops){
+    if(op.borrarVenta){ const v=venta(op.borrarVenta); if(!v) throw new Error('No existe '+op.borrarVenta);
+      const cs=new Set(D.cuotas.filter(c=>c.venta===v.id).map(c=>c.id)); D.pagos=D.pagos.filter(p=>!cs.has(p.cuota)); D.cuotas=D.cuotas.filter(c=>!cs.has(c.id));
+      D.bottles.forEach(b=>{ if(b.venta===v.id){ b.venta=''; } }); D.ventas=D.ventas.filter(x=>x!==v); log.push('venta '+v.id+' borrada'); }
+    else if(op.reasignar){ const {venta:vid,de,a}=op.reasignar, v=venta(vid), bA=bot(a); if(!v||!bA) throw new Error('No existe '+vid+' o '+a);
+      let n=0; v.items.forEach(i=>{ if(i.ref===de){ i.ref=a; n++; } }); if(!n) throw new Error(vid+' no tiene '+de);
+      bA.estado='Vendido'; bA.venta=vid; bA.fSalida=v.fecha||bA.fSalida||null; const bD=bot(de); if(bD&&bD.venta===vid) bD.venta=''; log.push(vid+': '+de+' → '+a); }
+    else if(op.borrarBotella){ const b=bot(op.borrarBotella); if(!b) throw new Error('No existe '+op.borrarBotella);
+      if(b.venta&&venta(b.venta)) throw new Error(b.id+' sigue en la venta '+b.venta);
+      D.bottles=D.bottles.filter(x=>x!==b); const c=b.compra&&D.compras.find(x=>x.id===b.compra);
+      if(c&&!D.bottles.some(x=>x.compra===c.id)){ D.compras=D.compras.filter(x=>x!==c); D.deudas=D.deudas.filter(d=>d.compra!==c.id); log.push('pedido '+c.id+' borrado'); }
+      log.push('botella '+b.id+' borrada'); }
+    else if(op.quitarPagos){ const cs=new Set(D.cuotas.filter(c=>c.venta===op.quitarPagos).map(c=>c.id)); const n=D.pagos.filter(p=>cs.has(p.cuota)).length; D.pagos=D.pagos.filter(p=>!cs.has(p.cuota)); log.push(op.quitarPagos+': '+n+' pago(s) quitados'); }
+    else throw new Error('Operación desconocida'); }
+  return log; }
+const _fixFile17=A.fixFile;
+A.fixFile=()=>{ const inp=document.createElement('input'); inp.type='file'; inp.accept='.json,application/json';
+  inp.onchange=async()=>{ const f=inp.files[0]; if(!f) return; let x; try{ x=JSON.parse(await f.text()); }catch(e){ toast('Ese archivo no es un arreglo de Pasnó'); return; }
+    if(!x.ops){ // arreglo con código propio: como antes
+      const fx=FIXES.find(z=>z.id===x.fix); if(!fx){ toast('Ese archivo no es un arreglo de Pasnó'); return; }
+      S.cfg.fixes=S.cfg.fixes||[]; if(S.cfg.fixes.includes(fx.id)){ toast('Ese arreglo ya estaba aplicado'); return; }
+      const antes=JSON.stringify(S); try{ commit(`Arreglo aplicado: ${fx.id}`, ()=>{ fx.run(x.datos||{}); S.cfg.fixes.push(fx.id); }); }catch(e){ S=JSON.parse(antes); render(); toast('No se pudo aplicar (no se cambió nada): '+e.message); } return; }
+    aplicarArregloOps(x); };
+  inp.click(); };
+function aplicarArregloOps(x){ S.cfg.fixes=S.cfg.fixes||[]; if(S.cfg.fixes.includes(x.fix)){ toast('Ese arreglo ya estaba aplicado'); return; }
+  try{ aplicarOps(JSON.parse(JSON.stringify(S)),x.ops); }catch(e){ toast('No se aplicó nada: '+e.message); return; }
+  let log=[]; commit(`Arreglo aplicado: ${x.fix}`, ()=>{ log=aplicarOps(S,x.ops); S.cfg.fixes.push(x.fix); }); console.log(log); return log; }
 
 
 boot();
