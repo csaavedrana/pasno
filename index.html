@@ -862,7 +862,8 @@ function vVentaSheet(v){
   const back=`<button class="btn ghost" data-a="vAct" data-v="">Atrás</button>`;
   let body='';
   if(a==='editar'){ const cl=V('ec',v.cliente);
-    body=`<div class="field"><label for="ec">Cliente</label><select id="ec" data-k>${[...S.clientes].sort((x,y)=>x.nombre.localeCompare(y.nombre,'es')).map(c=>`<option value="${c.id}" ${cl===c.id?'selected':''}>${esc(c.nombre)}</option>`).join('')}</select></div>
+    body=`<div class="field"><label for="ec">Cliente</label><select id="ec" data-k data-r>${[...S.clientes].sort((x,y)=>x.nombre.localeCompare(y.nombre,'es')).map(c=>`<option value="${c.id}" ${cl===c.id?'selected':''}>${esc(c.nombre)}</option>`).join('')}<option value="new" ${cl==='new'?'selected':''}>+ Cliente nuevo</option></select></div>
+      ${cl==='new'?`<div class="grid2"><div class="field"><label for="ecn">Nombre</label><input id="ecn" data-k value="${esc(V('ecn'))}" autocomplete="off"></div><div class="field"><label for="ect">WhatsApp (opcional)</label><input id="ect" data-k inputmode="tel" placeholder="9 1234 5678" value="${esc(V('ect'))}"></div></div>`:''}
       <div class="grid2"><div class="field"><label for="et">Total</label><input id="et" data-k data-r inputmode="numeric" value="${esc(V('et',v.total.toLocaleString('es-CL')))}"></div><div class="field"><label for="ef">Fecha</label><input id="ef" data-k type="date" value="${esc(V('ef',v.fecha||''))}"></div></div>
       <div class="field"><span class="flab">Vendió</span>${segBtns('eVend',[['Mati','Mati'],['Wanda','Wanda']],ui.eVend||v.vendedor)}</div>
       ${num(V('et',String(v.total)))!==v.total?`<span class="s">Ya pagó ${clp(pagado)}. ${num(V('et'))>pagado?`Las cuotas pendientes se recalculan para sumar ${clp(num(V('et'))-pagado)}.`:num(V('et'))===pagado?'Con ese total la venta queda pagada.':`Pagó ${clp(pagado-num(V('et')))} de más: queda como saldo a favor.`}</span>`:''}
@@ -992,15 +993,17 @@ const A = {
   merge(d){ const k=S.clientes.find(c=>c.id===ui.cliId), o=S.clientes.find(c=>c.id===d.id); ui.mergeWith=null;
     commit(`${o.nombre} unido a ${k.nombre}`, ()=>{ S.ventas.forEach(v=>{ if(v.cliente===o.id) v.cliente=k.id; }); if(!k.tel&&o.tel) k.tel=o.tel; if(!k.dia&&o.dia) k.dia=o.dia; if(!k.ult||o.ult>k.ult) k.ult=o.ult||k.ult; k.favor=(k.favor||0)+(o.favor||0); S.clientes=S.clientes.filter(c=>c.id!==o.id); }); },
   // venta
-  venta(d){ ui.sheet={t:'venta',id:d.id}; ui.vAct=null; ui.eVend=null; clearForm('ec','et','ef','an','swq'); render(); },
+  venta(d){ ui.sheet={t:'venta',id:d.id}; ui.vAct=null; ui.eVend=null; clearForm('ec','et','ef','an','swq','ecn','ect'); render(); },
   vAct(d){ ui.vAct=d.v||null; render(); },
   eVend(d){ ui.eVend=d.v; render(); },
   swapAsk(d){ ui.swapI=+d.i; ui.vAct='cambiar'; clearForm('swq'); render(); },
   swap(d){ const v=S.ventas.find(x=>x.id===ui.sheet.id), it=v.items[ui.swapI], nb=S.bottles.find(x=>x.id===d.id), ob=S.bottles.find(x=>x.id===it.ref);
     ui.vAct=null; commit(`Cambiado: ${ob.name} → ${nb.name}`, ()=>{ ob.estado=ob.porEntregar&&!ob.llego?'En camino':'Stock'; ob.venta=''; ob.fSalida=null; ob.porEntregar=false; delete ob.llego; nb.estado='Vendido'; nb.venta=v.id; nb.fSalida=today(); Object.assign(it,{ref:nb.id,nombre:nb.name,lista:nb.price,costo:nb.cost}); }); },
   saveEdit(d){ const v=S.ventas.find(x=>x.id===d.id), {paid}=idx(), cs=S.cuotas.filter(c=>c.venta===v.id), pagado=cs.reduce((a,c)=>a+(paid.get(c.id)||0),0);
-    const cli=V('ec',v.cliente), T=num(V('et',String(v.total)))||v.total, fecha=V('ef',v.fecha||'')||v.fecha, vend=ui.eVend||v.vendedor; ui.vAct=null;
-    commit(`Venta ${v.id} actualizada`, ()=>{ v.cliente=cli; v.fecha=fecha; v.vendedor=vend;
+    let cli=V('ec',v.cliente); const T=num(V('et',String(v.total)))||v.total, fecha=V('ef',v.fecha||'')||v.fecha, vend=ui.eVend||v.vendedor, nn=titleCase(V('ecn').trim());
+    if(cli==='new'&&!nn){ toast('Escribe el nombre del cliente nuevo'); return; } ui.vAct=null;
+    commit(`Venta ${v.id} actualizada`, ()=>{ if(cli==='new'){ let k=S.clientes.find(x=>norm(x.nombre)===norm(nn)); if(!k){ k={id:uid('K'),nombre:nn,tel:normTel(V('ect')),dia:null,notas:'',ult:null,favor:0}; if(k.tel.length<11) k.tel=''; S.clientes.push(k); } cli=k.id; }
+      v.cliente=cli; v.fecha=fecha; v.vendedor=vend;
       if(T!==v.total){ const L=v.items.reduce((a,i)=>a+i.precio,0); let acc=0; v.items.forEach((it,i)=>{ it.precio=i===v.items.length-1?T-acc:(L?Math.round(it.precio*T/L):Math.round(T/v.items.length)); acc+=it.precio; }); v.total=T;
         const perd=cs.filter(c=>c.perdida).reduce((a,c)=>a+Math.max(0,c.monto-(paid.get(c.id)||0)),0), open=cs.filter(c=>!c.perdida&&saldoC(c,paid)>0).sort((a,b)=>a.n-b.n), resto=T-pagado-perd;
         const conf=open.some(c=>c.conf); open.forEach(c=>{ c.monto=paid.get(c.id)||0; });
@@ -1707,7 +1710,7 @@ A.iaMemDel=d=>{ const M=iaMem(), x=M[d.k][+d.i]; if(!x) return; commit('Borrado'
 
 
 // versión visible al final de Ajustes, para saber si el teléfono ya tiene la última
-const APP_VER='21-10 21:33';
+const APP_VER='2-11 05:58';
 
 /* ---------- Ajustes: lista agrupada, cada cosa se edita en su propia hoja ---------- */
 const AJ_MSG={antes:['Antes de que venza','Se manda unos días antes del vencimiento.'],hoy:['El día que vence','Se manda el mismo día del vencimiento.'],atrasada:['Cuota atrasada','Para cuando ya pasó la fecha.']};
