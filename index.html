@@ -1710,7 +1710,7 @@ A.iaMemDel=d=>{ const M=iaMem(), x=M[d.k][+d.i]; if(!x) return; commit('Borrado'
 
 
 // versión visible al final de Ajustes, para saber si el teléfono ya tiene la última
-const APP_VER='2-11 05:58';
+const APP_VER='3-11 20:53';
 
 /* ---------- Ajustes: lista agrupada, cada cosa se edita en su propia hoja ---------- */
 const AJ_MSG={antes:['Antes de que venza','Se manda unos días antes del vencimiento.'],hoy:['El día que vence','Se manda el mismo día del vencimiento.'],atrasada:['Cuota atrasada','Para cuando ya pasó la fecha.']};
@@ -2213,6 +2213,31 @@ A.fixFile=()=>{ const inp=document.createElement('input'); inp.type='file'; inp.
 function aplicarArregloOps(x){ S.cfg.fixes=S.cfg.fixes||[]; if(S.cfg.fixes.includes(x.fix)){ toast('Ese arreglo ya estaba aplicado'); return; }
   try{ aplicarOps(JSON.parse(JSON.stringify(S)),x.ops); }catch(e){ toast('No se aplicó nada: '+e.message); return; }
   let log=[]; commit(`Arreglo aplicado: ${x.fix}`, ()=>{ log=aplicarOps(S,x.ops); S.cfg.fixes.push(x.fix); }); console.log(log); return log; }
+
+
+/* ===== src/18_quitar_pago.js ===== */
+/* ---------- Quitar un pago anotado por error ----------
+   Desde la hoja de la venta: "Quitar un pago". Lista los pagos de esa venta y cada uno se puede borrar;
+   la cuota vuelve a quedar como deuda. Si el pago venía del saldo a favor, ese saldo vuelve al cliente. */
+function pagosVenta(vid){ const cs=new Map(S.cuotas.filter(c=>c.venta===vid).map(c=>[c.id,c]));
+  return S.pagos.filter(p=>cs.has(p.cuota)).map(p=>({p,c:cs.get(p.cuota)})).sort((a,b)=>String(b.p.fecha||'').localeCompare(String(a.p.fecha||''))||b.c.n-a.c.n); }
+const _vVentaSheetQuitar=vVentaSheet;
+vVentaSheet=function(v){
+  const L=pagosVenta(v.id);
+  if(ui.vAct==='quitarPago'&&L.length){
+    return `<div class="grab"></div><div><h2 style="margin:0">${v.id} · ${esc(cliName(v.cliente))}</h2><p class="note" style="margin-top:4px">Quitar un pago</p></div>
+    <span class="s">Toca el pago que anotaste por error. La cuota vuelve a quedar como deuda.</span>
+    <div class="list">${L.map(({p,c})=>`<div class="row"><div class="main"><div class="t">${c.n===0?'Pie':'Cuota '+c.n} · ${clp(p.monto)}</div><div class="s">${p.fecha?fmtDate(p.fecha):'sin fecha'}${p.recibio?' · recibió '+esc(p.recibio):''}${p.tipo==='favor'?' · del saldo a favor':''}</div></div><button class="btn sm ghost" data-a="quitarPago" data-id="${p.id}">Quitar</button></div>`).join('')}</div>
+    <div class="acts"><button class="btn ghost" data-a="vAct" data-v="">Atrás</button></div>`; }
+  let h=_vVentaSheetQuitar(v);
+  if(!ui.vAct&&L.length&&!v.enPlan){ const btn=`<button class="btn ghost block" data-a="vAct" data-v="quitarPago">Quitar un pago</button>`;
+    h=h.includes('data-a="closeSheet">Cerrar</button>')?h.replace(/<button class="btn ghost block" data-a="closeSheet">Cerrar<\/button>(?![\s\S]*data-a="closeSheet">Cerrar<\/button>)/,btn+'<button class="btn ghost block" data-a="closeSheet">Cerrar</button>'):h+btn; }
+  return h; };
+A.quitarPago=d=>{ const p=S.pagos.find(x=>x.id===d.id); if(!p) return; const c=S.cuotas.find(x=>x.id===p.cuota)||{}, v=S.ventas.find(x=>x.id===c.venta)||{};
+  ui.vAct=pagosVenta(v.id).length>1?'quitarPago':null;
+  commit(`Pago de ${clp(p.monto)} quitado (${c.n===0?'pie':'cuota '+c.n} de ${v.id})`, ()=>{ S.pagos=S.pagos.filter(x=>x!==p);
+    if(p.tipo==='favor'){ const k=S.clientes.find(x=>x.id===v.cliente); if(k) k.favor=(k.favor||0)+p.monto; } });
+  if(!pagosVenta(v.id).length) ui.vAct=null; };
 
 
 boot();
