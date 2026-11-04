@@ -145,8 +145,24 @@ nav.tabs button[aria-current="page"]{color:var(--plum)}
 nav.tabs .sell{background:var(--amber);color:#fff;border-radius:16px;padding:10px 0;margin:0 6px;transform:translateY(-8px);box-shadow:0 4px 14px rgba(0,0,0,.18)}
 nav.tabs .sell[aria-current="page"]{color:#fff}
 nav.tabs .badge{position:absolute;top:0;left:calc(50% + 6px);background:var(--warn);color:#fff;border-radius:999px;font-size:10px;padding:1px 5px;line-height:1.3}
-.toast{position:fixed;left:50%;bottom:calc(98px + env(safe-area-inset-bottom, 0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 12px 10px 16px;border-radius:12px;font-weight:600;font-size:14px;z-index:9;width:max-content;max-width:calc(100% - 32px);display:flex;gap:12px;align-items:center}
-.toast button{border:0;background:var(--amber);color:#fff;border-radius:8px;padding:6px 10px;font-weight:700;font-size:13px}
+.toast{position:fixed;left:50%;bottom:calc(98px + env(safe-area-inset-bottom, 0px));transform:translateX(-50%);background:var(--ink);color:var(--bg);padding:10px 12px 10px 16px;border-radius:12px;font-weight:600;font-size:14px;z-index:30;width:max-content;max-width:calc(100% - 32px);display:flex;gap:12px;align-items:center}
+.toast button{border:0;background:var(--amber);color:#1F1A26;border-radius:8px;padding:6px 10px;font-weight:700;font-size:13px}
+body:has(#sheet:not([hidden])) .toast{top:calc(12px + env(safe-area-inset-top, 0px));bottom:auto}
+.fix{border-top:1px solid var(--line);padding-top:2px}
+.fix summary{cursor:pointer;list-style:none;display:flex;justify-content:space-between;align-items:center;min-height:44px;font-weight:700;color:var(--muted);font-size:14px}
+.fix summary::-webkit-details-marker{display:none}
+.fix summary:after{content:'›';display:inline-block;transform:rotate(90deg);transition:transform .15s;font-size:20px;line-height:1}
+.fix[open] summary:after{transform:rotate(-90deg)}
+.fixlist{display:grid;padding-bottom:4px}
+.fixlist button{all:unset;box-sizing:border-box;cursor:pointer;display:grid;gap:2px;padding:10px 4px;min-height:44px;border-top:1px dashed var(--line);color:var(--plum);font-weight:700;font-size:15px}
+.fixlist>:first-child{border-top:0}
+.fixlist button small{font-weight:500;color:var(--muted);font-size:12.5px}
+.fixlist button.danger{color:var(--warn)}
+.fixlist button:focus-visible{outline:2px solid var(--plum);outline-offset:2px;border-radius:6px}
+.fixwhy{font-size:12.5px;color:var(--muted);padding:10px 4px;border-top:1px dashed var(--line)}
+.fixwhy b{color:var(--ink);font-weight:600}
+.btn.danger{background:var(--warn-soft);color:var(--warn)}
+.btn.danger.solid{background:var(--warn);color:var(--bg)}
 .sheet{position:fixed;inset:0;background:rgba(20,14,26,.55);z-index:20;display:flex;align-items:flex-end;justify-content:center}
 .sheet .panel{background:var(--surface);color:var(--ink);width:100%;max-width:520px;border-radius:20px 20px 0 0;padding:22px 20px calc(24px + env(safe-area-inset-bottom, 0px));display:grid;gap:14px}
 .sheet h2{margin:0}
@@ -464,7 +480,8 @@ function vResumen(){
     ${S.cfg.capital!=null?(cuadra(k)?'<div class="okbox">Cuadra. Todo lo que entró y salió está anotado.</div>':`<div class="warnbox">${diff<0?'Faltan':'Sobran'} ${clp(Math.abs(diff))} entre tu plata y lo anotado.</div>`):''}
     <details><summary class="linkbtn" style="list-style:none;cursor:pointer">Ver el cálculo</summary><div class="sched" style="margin-top:8px">${cuadreLines(k)}</div></details>`
     :'<span class="s">Una vez al mes anotas cuánto tienes en la cuenta y en el ahorro, y la app te dice si cuadra con lo anotado.</span>'}
-    <button class="btn" data-a="flow" data-f="f_cierre">Cerrar el mes</button></div>`;
+    <button class="btn" data-a="flow" data-f="f_cierre">Cerrar el mes</button>
+    ${k.K?(ui.cierreDel?`<div class="warnbox" style="display:grid;gap:8px"><span>¿Borrar el cierre del ${fmtDate(k.K.fecha)}? Se borran los saldos que anotaste ese día (cuenta ${clp(k.K.banco)}, ahorro ${clp(k.K.ahorro)}, caja ${clp(k.K.efectivo||0)}).${S.saldos.length>1?` Queda como último el del ${fmtDate(S.saldos[S.saldos.length-2].fecha)}.`:''}</span><div style="display:flex;gap:8px"><button class="btn sm danger solid" data-a="cierreDel">Sí, borrar cierre</button><button class="btn sm ghost" data-a="cierreDelAsk" data-v="">Cancelar</button></div></div>`:`<button class="linkbtn" data-a="cierreDelAsk" data-v="1">Me equivoqué en este cierre: borrarlo</button>`):''}</div>`;
 }
 /* ---------- Clientes ---------- */
 function vClientes(){
@@ -678,7 +695,7 @@ function vPedidos(k){
   return `${k.deuda?`<div class="card" style="margin-top:12px"><span class="lab">Debes a proveedores</span><span style="font-size:22px;font-weight:700">${clp(k.deuda)}</span><span class="s">Próximo pago ${fmtDay(k.proxDeuda.vence)} ${dueChip(k.proxDeuda.vence)}</span></div>`:''}
   <h3>Pedidos</h3><div class="list">${cs.map(c=>{ const bs=S.bottles.filter(b=>b.compra===c.id); const names=[...new Set(bs.map(b=>b.name))]; const pend=S.deudas.filter(d=>d.compra===c.id&&!d.pagado);
     const esperando=bs.filter(b=>b.estado==='En camino'||(b.porEntregar&&!b.llego)).length, llegaron=bs.filter(b=>!['En camino','Devuelta'].includes(b.estado)&&!(b.porEntregar&&!b.llego)).length, nole=bs.filter(b=>b.estado==='Devuelta'||(b.estado==='Pérdida'&&b.noLlego)).length;
-    return `<div class="row" style="flex-wrap:wrap"><div class="main"><div class="t">${esc(provName(c.prov))} · ${fmtDate(c.fecha)}</div><div class="s" style="white-space:normal">${bs.length?`${bs.length} perfume${bs.length>1?'s':''}: ${esc(names.slice(0,3).join(', '))}${names.length>3?'…':''}`:esc(c.nota||'Sin detalle de perfumes')}</div></div><div style="text-align:right"><div class="amt">${clp(c.total)}</div>${esperando?`<span class="chip n">${esperando} en camino</span>`:bs.length?'<span class="chip ok">recibido</span>':''}</div>
+    return `<div class="row" style="flex-wrap:wrap"><button class="main" style="all:unset;box-sizing:border-box;cursor:pointer;flex:1;min-width:0" data-a="compraSheet" data-id="${c.id}"><div class="t">${esc(provName(c.prov))} · ${fmtDate(c.fecha)} ›</div><div class="s" style="white-space:normal">${bs.length?`${bs.length} perfume${bs.length>1?'s':''}: ${esc(names.slice(0,3).join(', '))}${names.length>3?'…':''}`:esc(c.nota||'Sin detalle de perfumes')}</div></button><div style="text-align:right"><div class="amt">${clp(c.total)}</div>${esperando?`<span class="chip n">${esperando} en camino</span>`:bs.length?'<span class="chip ok">recibido</span>':''}</div>
       ${bs.length&&(esperando||nole)?`<div class="s" style="flex-basis:100%">Llegaron ${llegaron} · en camino ${esperando}${nole?' · no llegaron '+nole:''}</div>`:''}
       ${pend.length||esperando?`<div style="flex-basis:100%;display:grid;gap:6px">${pend.map(d=>`<div class="cuota" style="padding:8px 0 0"><div class="main"><div>Le debes ${clp(d.monto)}</div><div class="s">${fmtDay(d.vence)} ${dueChip(d.vence)}</div></div><button class="btn sm paid" data-a="payProv" data-id="${d.id}">Pagué</button></div>`).join('')}${esperando?`<button class="btn sm ghost" data-a="llegada" data-id="${c.id}">¿Qué llegó?</button>`:''}</div>`:''}</div>`; }).join('')||'<div class="empty">Sin pedidos todavía. Usa el botón + → Compré perfumes.</div>'}</div>
   <h3>Margen por proveedor</h3><div class="list">${S.proveedores.map(p=>`<div class="row"><div class="main"><div class="t">${esc(p.nombre)}</div><div class="s">${S.compras.filter(c=>c.prov===p.id).length} pedidos en la app</div></div><span class="chip d">${Math.round(p.margen*100)}%</span></div>`).join('')}</div>
@@ -721,7 +738,7 @@ function vCliente(){
     ${ui.perdOpen?`<div class="warnbox" style="margin-top:10px;display:grid;gap:8px"><span>¿Dar por perdidos los ${clp(g.total)} que te debe? Sale de "Te deben" y cuenta como pérdida. Queda en su historial.</span><div style="display:flex;gap:8px"><button class="btn sm" data-a="perdida" data-id="${k.id}">Sí, no va a pagar</button><button class="btn sm ghost" data-a="perdAsk" data-v="">Cancelar</button></div></div>`
       :`<button class="linkbtn" style="margin-top:6px" data-a="perdAsk" data-v="1">No va a pagar: dar la deuda por perdida</button>`}`:''}
   ${perdido?`<p class="note">Deuda dada por perdida: ${clp(perdido)}. <button class="linkbtn" data-a="perdUndo" data-id="${k.id}">Me pagó igual: volver a cobrar</button></p>`:''}
-  ${dups.length?`<h3>¿Es la misma persona?</h3><div class="list">${dups.slice(0,4).map(d=>`<div class="row"><div class="main"><div class="t">${esc(d.nombre)}</div><div class="s">${S.ventas.filter(v=>v.cliente===d.id).length} compras${d.tel?' · '+fmtTel(d.tel):''}</div></div>${ui.mergeWith===d.id?`<button class="btn sm" data-a="merge" data-id="${d.id}">Sí, unir</button><button class="btn sm ghost" data-a="mergeAsk" data-id="">No</button>`:`<button class="btn sm ghost" data-a="mergeAsk" data-id="${d.id}">Unir</button>`}</div>`).join('')}</div>${ui.mergeWith?`<p class="note">Las compras y cuotas de ${esc(S.clientes.find(c=>c.id===ui.mergeWith).nombre)} pasan a ${esc(k.nombre)}, y se borra el duplicado. Puedes deshacerlo.</p>`:''}`:''}
+  ${dups.length?`<h3>¿Es la misma persona?</h3><div class="list">${dups.slice(0,4).map(d=>`<div class="row"><div class="main"><div class="t">${esc(d.nombre)}</div><div class="s">${S.ventas.filter(v=>v.cliente===d.id).length} compras${d.tel?' · '+fmtTel(d.tel):''}</div></div>${ui.mergeWith===d.id?`<button class="btn sm" data-a="merge" data-id="${d.id}">Sí, unir</button><button class="btn sm ghost" data-a="mergeAsk" data-id="">No</button>`:`<button class="btn sm ghost" data-a="mergeAsk" data-id="${d.id}">Unir</button>`}</div>`).join('')}</div>${ui.mergeWith?`<p class="note">Las compras y cuotas de ${esc(S.clientes.find(c=>c.id===ui.mergeWith).nombre)} pasan a ${esc(k.nombre)}, y se borra el duplicado. Si te equivocas, abajo aparece "Separar".</p>`:''}`:''}
   ${ventas.length?`<h3>Compras</h3><div class="list">${ventas.map(v=>{ const cs=S.cuotas.filter(c=>c.venta===v.id), deb=cs.reduce((a,c)=>a+saldoC(c,paid),0), perd=cs.some(c=>c.perdida);
     return `<button class="rowbtn" data-a="venta" data-id="${v.id}"><div class="main"><div class="t" style="white-space:normal">${esc(v.items.map(i=>i.nombre).join(', ')||'Venta sin detalle')}</div><div class="s">${v.id} · ${v.fecha?fmtDate(v.fecha):'sin fecha'} · vendió ${esc(v.vendedor)}${cs.filter(c=>c.n>0).length>1?' · '+cs.filter(c=>c.n>0).length+' cuotas':''}</div></div><div style="text-align:right"><div class="amt">${clp(v.total)}</div>${perd?'<span class="chip w">perdida</span>':deb?`<span class="chip n">debe ${clp(deb)}</span>`:'<span class="chip ok">pagado</span>'}</div></button>`; }).join('')}</div><p class="note">Toca una compra para editarla, cambiar el perfume o anularla.</p>`:''}`;
 }
@@ -855,8 +872,15 @@ function vBottleSheet(b){
   else if(b.estado==='En camino') body=`<div class="acts"><button class="btn" data-a="llego" data-id="${b.id}" style="grid-column:1/-1">Llegó: pasar a stock</button><button class="btn ghost" data-a="sellB" data-id="${b.id}">Vender (preventa)</button><button class="btn ghost" data-a="bAct" data-v="NoLlego">No llegó</button></div>`;
   else if(b.estado==='Stock'||b.estado==='Revisar') body=`<div class="acts"><button class="btn" data-a="sellB" data-id="${b.id}" style="grid-column:1/-1">${b.estado==='Revisar'?'Se vendió: anotar a quién':'Vender'}</button><button class="btn ghost" data-a="bAct" data-v="Abrir">Abrir para decants</button><button class="btn ghost" data-a="bAct" data-v="Regalo">Regalo</button><button class="btn ghost" data-a="bAct" data-v="Uso propio">Me lo quedé</button><button class="btn ghost" data-a="bAct" data-v="Pérdida">Pérdida</button>${b.estado==='Revisar'?`<button class="btn ghost" data-a="bMark" data-id="${b.id}" data-v="Stock" style="grid-column:1/-1">Está en stock</button>`:''}</div>`;
   const title={Abrir:'Abrir para decants',Precios:'Precios de decants',Terminar:'¿Se terminó la botella?',NoLlego:'No llegó: ¿qué pasó?','Uso propio':'Me lo quedé'}[a]||a;
-  return `<div class="grab"></div><div><h2 style="margin:0">${esc(b.name)}</h2><p class="note" style="margin-top:4px">${b.ml} ml · ${b.tipo}${b.price?' · precio '+clp(b.price):''}</p></div>${a?`<span class="flab">${title}</span>`:bottleHistory(b)}${body}`;
+  return `<div class="grab"></div><div><h2 style="margin:0">${esc(b.name)}</h2><p class="note" style="margin-top:4px">${b.ml} ml · ${b.tipo}${b.price?' · precio '+clp(b.price):''}</p></div>${a?`<span class="flab">${title}</span>`:bottleHistory(b)}${body}${a?'':fixGroup('bottle',b)}`;
 }
+/* "Corregir o deshacer": cada hoja junta sus correcciones en un grupo plegado. Los módulos se registran en FIX.
+   Item: {ord, label, sub(x)?, when(x) → true | false | 'motivo por el que no se puede', attrs(x) → 'data-a=… data-…', danger} */
+const FIX={venta:[],bottle:[],compra:[]};
+function fixGroup(kind,x){ const L=FIX[kind].map(f=>({f,w:f.when?f.when(x):true})).filter(o=>o.w).sort((a,b)=>(a.f.ord||50)-(b.f.ord||50)); if(!L.length) return '';
+  return `<details class="fix"><summary>Corregir o deshacer</summary><div class="fixlist">${L.map(({f,w})=>w===true?`<button class="${f.danger?'danger':''}" ${f.attrs(x)}>${esc(f.label)}${f.sub?`<small>${f.sub(x)}</small>`:''}</button>`:`<div class="fixwhy"><b>${esc(f.label)}</b>: ${w}</div>`).join('')}</div></details>`; }
+const lastCierre=()=>{ const K=S.saldos[S.saldos.length-1]; return K?K.fecha:''; };
+FIX.venta.push({ord:99,label:'Anular venta',danger:true,sub:()=>'Borra la venta y sus cuotas; las botellas vuelven al stock',attrs:v=>`data-a="vAct" data-v="anular"`});
 function vVentaSheet(v){
   const {paid}=idx(), cs=S.cuotas.filter(c=>c.venta===v.id).sort((a,b)=>a.n-b.n), pagado=cs.reduce((a,c)=>a+(paid.get(c.id)||0),0), a=ui.vAct;
   const back=`<button class="btn ghost" data-a="vAct" data-v="">Atrás</button>`;
@@ -873,7 +897,7 @@ function vVentaSheet(v){
       ${pagado?`<div class="flab">Ya te había pagado ${clp(pagado)}. ¿Qué pasa con esa plata?</div>
       <label class="radio"><input type="radio" name="an" id="an1" value="devolvi" data-k ${opt==='devolvi'?'checked':''}><span>Se la devolví</span></label>
       <label class="radio"><input type="radio" name="an" id="an2" value="favor" data-k ${opt==='favor'?'checked':''}><span>Queda como saldo a favor para su próxima compra</span></label>`:''}
-      <div class="acts">${back}<button class="btn" data-a="anular" data-id="${v.id}">Anular venta</button></div>`; }
+      <div class="acts">${back}<button class="btn danger solid" data-a="anular" data-id="${v.id}">Anular venta</button></div>`; }
   else if(a==='cambiar'){ const it=v.items[ui.swapI], q=norm(V('swq')); const bs=S.bottles.filter(b=>b.estado==='Stock'&&(!q||norm(b.name).includes(q))).slice(0,30);
     body=`<span class="s">Devuelve <b>${esc(it.nombre)}</b> al stock y entrega otro. El precio de la venta no cambia; si cambia, usa "Editar venta".</span>
       <input id="swq" data-k data-r class="search" placeholder="Buscar el perfume nuevo" value="${esc(V('swq'))}" autocomplete="off">
@@ -882,7 +906,8 @@ function vVentaSheet(v){
   else body=`<div class="list">${v.items.map((it,i)=>`<div class="row"><div class="main"><div class="t">${esc(it.nombre)}</div><div class="s">ganas ${clp(it.precio-it.costo)}</div></div><span class="amt">${clp(it.precio)}</span>${it.t==='b'?`<button class="btn sm ghost" data-a="swapAsk" data-i="${i}">Cambiar</button>`:''}</div>`).join('')||'<div class="empty">Venta sin detalle de perfumes.</div>'}</div>
     <div class="sched">${cs.map(c=>{ const s=saldoC(c,paid); return `<div class="r"><span>${cuotaLab(c)} · ${fmtDate(c.vence)}</span><b>${c.perdida?'perdida':s?'debe '+clp(s):'✓ '+clp(c.monto)}</b></div>`; }).join('')}<div class="r tot"><span>Total · pagado ${clp(pagado)}</span><span>${clp(v.total)}</span></div></div>
     <button class="btn wa block" data-a="share" data-k="venta" data-id="${v.id}">Enviar resumen al cliente</button>
-    <div class="acts"><button class="btn ghost" data-a="vAct" data-v="editar">Editar venta</button><button class="btn ghost" data-a="vAct" data-v="anular">Anular venta</button></div>
+    <button class="btn ghost block" data-a="vAct" data-v="editar">Editar venta</button>
+    ${fixGroup('venta',v)}
     <button class="btn ghost block" data-a="closeSheet">Cerrar</button>`;
   return `<div class="grab"></div><div><h2 style="margin:0">${v.id} · ${esc(cliName(v.cliente))}</h2><p class="note" style="margin-top:4px">${v.fecha?fmtDay(v.fecha):'Sin fecha'} · vendió ${esc(v.vendedor)}</p></div>${a?`<span class="flab">${{editar:'Editar venta',anular:'¿Anular esta venta?',cambiar:'Cambiar perfume'}[a]}</span>`:''}${body}`;
 }
@@ -919,6 +944,7 @@ function render(top){
     if(s.t==='add') inner=vAddSheet(); else if(s.t==='install') inner=vInstall();
     else if(s.t==='bottle'){ const b=S.bottles.find(x=>x.id===s.id); inner=b?vBottleSheet(b):''; }
     else if(s.t==='venta'){ const v=S.ventas.find(x=>x.id===s.id); inner=v?vVentaSheet(v):''; }
+    else if(s.t==='compra') inner=(typeof vCompraSheet==='function')?vCompraSheet(s):'';
     else if(s.t==='llegada'){ const c=S.compras.find(x=>x.id===s.id); inner=c?vLlegadaSheet(c):''; }
     else if(s.t==='hist') inner=vHistSheet(s.k,s.i);
     else if(s.t==='share') inner=vShareSheet(s);
@@ -991,7 +1017,7 @@ const A = {
     if(isNew){ ui.cliId=k.id; render(); } },
   mergeAsk(d){ ui.mergeWith=d.id||null; render(); },
   merge(d){ const k=S.clientes.find(c=>c.id===ui.cliId), o=S.clientes.find(c=>c.id===d.id); ui.mergeWith=null;
-    commit(`${o.nombre} unido a ${k.nombre}`, ()=>{ S.ventas.forEach(v=>{ if(v.cliente===o.id) v.cliente=k.id; }); if(!k.tel&&o.tel) k.tel=o.tel; if(!k.dia&&o.dia) k.dia=o.dia; if(!k.ult||o.ult>k.ult) k.ult=o.ult||k.ult; k.favor=(k.favor||0)+(o.favor||0); S.clientes=S.clientes.filter(c=>c.id!==o.id); }); },
+    commit(`${o.nombre} unido a ${k.nombre}`, ()=>{ k.unidos=(k.unidos||[]).concat([{cli:JSON.parse(JSON.stringify(o)),ventas:S.ventas.filter(v=>v.cliente===o.id).map(v=>v.id),tel:!k.tel&&o.tel?o.tel:'',dia:!k.dia&&o.dia?o.dia:null,fecha:today()}]); S.ventas.forEach(v=>{ if(v.cliente===o.id) v.cliente=k.id; }); if(!k.tel&&o.tel) k.tel=o.tel; if(!k.dia&&o.dia) k.dia=o.dia; if(!k.ult||o.ult>k.ult) k.ult=o.ult||k.ult; k.favor=(k.favor||0)+(o.favor||0); S.clientes=S.clientes.filter(c=>c.id!==o.id); }); },
   // venta
   venta(d){ ui.sheet={t:'venta',id:d.id}; ui.vAct=null; ui.eVend=null; clearForm('ec','et','ef','an','swq','ecn','ect'); render(); },
   vAct(d){ ui.vAct=d.v||null; render(); },
@@ -1093,7 +1119,7 @@ const A = {
   hist(d){ ui.sheet={t:'hist',k:d.k,i:+d.i,sig:JSON.stringify((d.k==='g'?S.gastos:S.movs)[+d.i])}; clearForm('hm','hf','hd'); render(); },
   histSave(d){ const arr=d.k==='g'?S.gastos:S.movs, sig=ui.sheet&&ui.sheet.sig, ix=sig?arr.findIndex(x=>JSON.stringify(x)===sig):+d.i; if(ix<0){ ui.sheet=null; toast('Ese registro cambió mientras lo mirabas. Ábrelo de nuevo.'); render(); return; } d={...d,i:ix}; const it=arr[+d.i], m=num(V('hm',String(it.monto)))||it.monto, f=V('hf',it.fecha||'')||it.fecha, det=V('hd',it.det||''); ui.sheet=null;
     commit('Corregido', ()=>{ it.monto=m; it.fecha=f; it.det=det; }); },
-  histDel(d){ const arr=d.k==='g'?'gastos':'movs', sig=ui.sheet&&ui.sheet.sig, ix=sig?S[arr].findIndex(x=>JSON.stringify(x)===sig):+d.i; ui.sheet=null; if(ix<0){ toast('Ese registro cambió mientras lo mirabas. Ábrelo de nuevo.'); render(); return; } commit('Borrado', ()=>{ S[arr].splice(ix,1); }); },
+  histDel(d){ const arr=d.k==='g'?'gastos':'movs', sig=ui.sheet&&ui.sheet.sig, ix=sig?S[arr].findIndex(x=>JSON.stringify(x)===sig):+d.i; ui.sheet=null; if(ix<0){ toast('Ese registro cambió mientras lo mirabas. Ábrelo de nuevo.'); render(); return; } const it=S[arr][ix]; commit(`${d.k==='g'?'Gasto':'Movimiento'} de ${clp(it.monto)} borrado${it.det?' ('+it.det+')':''}`, ()=>{ S[arr].splice(ix,1); }); },
   saveCfg(){ commit('Ajustes guardados', ()=>{ S.cfg.regalosMes=num(V('cfR',String(S.cfg.regalosMes)))||S.cfg.regalosMes; S.cfg.tpl={antes:V('cfA',S.cfg.tpl.antes),hoy:V('cfH',S.cfg.tpl.hoy),atrasada:V('cfT',S.cfg.tpl.atrasada)}; }); clearForm('cfR','cfA','cfH','cfT'); },
   reset(){ commit('Datos originales restaurados', ()=>{ S=fresh(); }); FORM={}; picks={}; },
   csv(){ const {paid,vMap,kMap}=idx(); const rows=[['venta','cliente','vendedor','fecha_venta','cuota','monto','pagado','saldo','vence']];
@@ -1393,7 +1419,7 @@ function vConsigna(){
     const todo=total.length&&!fuera.length, k=S.clientes.find(c=>c.id===v.cliente), deb=k?debtOf(k.id):0;
     return `<div class="card" style="margin-top:12px">
       <div class="row" style="padding:0;border:0"><div class="main"><div class="t">${esc(v.nombre)}</div><div class="s">${fuera.length} producto${fuera.length===1?'':'s'} en su poder · se venden en ${clp(fuera.reduce((a,i)=>a+i.precio,0))}</div></div>${deb?`<span class="chip n">te debe ${clp(deb)}</span>`:''}</div>
-      ${v.premio?`<div><div class="prog"><span style="width:${total.length?vend.length/total.length*100:0}%;background:var(--good)"></span></div><span class="s">Premio si vende todo: ${esc(v.premio.desc)} · ${vend.length} de ${total.length} vendidos${v.premio.entregado?' · <b>entregado</b>':''}</span></div>`:''}
+      ${v.premio?`<div><div class="prog"><span style="width:${total.length?vend.length/total.length*100:0}%;background:var(--good)"></span></div><span class="s">Premio si vende todo: ${esc(v.premio.desc)} · ${vend.length} de ${total.length} vendidos${v.premio.entregado?` · <b>entregado</b> <button class="linkbtn" style="padding:0" data-a="premioUndo" data-id="${v.id}">No lo entregué</button>`:''}</span></div>`:''}
       <div class="list">${fuera.map(i=>`<div class="row"><div class="main"><div class="t">${esc(i.nombre)}</div><div class="s">mandado el ${fmtDate(consignas().find(g=>g.id===i._g).fecha)}</div></div><span class="amt">${clp(i.precio)}</span></div>`).join('')||'<div class="empty">No tiene productos tuyos ahora.</div>'}</div>
       <div class="acts">${fuera.length?`<button class="btn paid" data-a="consVend" data-id="${v.id}">Vendió…</button><button class="btn ghost" data-a="consDev" data-id="${v.id}">Me devolvió…</button>`:''}<button class="btn ghost" data-a="flow" data-f="f_consigna" data-id="${v.id}">Mandar más</button>${deb&&k?`<button class="btn ghost" data-a="openCli" data-id="${k.id}">Cobrarle</button>`:''}</div>
       ${v.premio&&todo&&!v.premio.entregado?`<div class="okbox">¡Vendió todo! Le toca su premio: ${esc(v.premio.desc)}. <button class="linkbtn" data-a="consPremio" data-id="${v.id}">Entregar premio</button></div>`:''}
@@ -1710,7 +1736,7 @@ A.iaMemDel=d=>{ const M=iaMem(), x=M[d.k][+d.i]; if(!x) return; commit('Borrado'
 
 
 // versión visible al final de Ajustes, para saber si el teléfono ya tiene la última
-const APP_VER='3-11 20:53';
+const APP_VER='4-11 03:25';
 
 /* ---------- Ajustes: lista agrupada, cada cosa se edita en su propia hoja ---------- */
 const AJ_MSG={antes:['Antes de que venza','Se manda unos días antes del vencimiento.'],hoy:['El día que vence','Se manda el mismo día del vencimiento.'],atrasada:['Cuota atrasada','Para cuando ya pasó la fecha.']};
@@ -1954,10 +1980,8 @@ vVentaSheet=function(v){
     <span class="s">Las siguientes se corren mes a mes. Si ya debía este mes o antes, pon esa fecha y saldrá como atrasada.</span></div>
     <div class="sched">${pend.map((c,i)=>`<div class="r"><span>${c.n===0?'Pie':'Cuota '+c.n} · ${fmtDate(fs[i])}${fs[i]<today()?' <span class="chip w">atrasada</span>':''}</span><b>${clp(saldoC(c,paid))}</b></div>`).join('')}</div>
     <div class="acts"><button class="btn ghost" data-a="vAct" data-v="">Atrás</button><button class="btn" data-a="fechasSave" data-id="${v.id}">Guardar fechas</button></div>`; }
-  let h=_vVentaSheetFechas(v);
-  if(!ui.vAct&&pend.length&&!v.enPlan){ const btn=`<button class="btn ghost block" data-a="vAct" data-v="fechas">Cambiar fechas de cobro</button>`;
-    h=h.includes('data-a="closeSheet">Cerrar</button>')?h.replace(/<button class="btn ghost block" data-a="closeSheet">Cerrar<\/button>(?![\s\S]*data-a="closeSheet">Cerrar<\/button>)/,btn+'<button class="btn ghost block" data-a="closeSheet">Cerrar</button>'):h+btn; }
-  return h; };
+  return _vVentaSheetFechas(v); };
+FIX.venta.push({ord:20,label:'Cambiar fechas de cobro',sub:()=>'Corre las cuotas que faltan a otra fecha',when:v=>!v.enPlan&&cuotasPend(v.id).length>0,attrs:()=>`data-a="vAct" data-v="fechas"`});
 A.fechasSave=d=>{ const v=S.ventas.find(x=>x.id===d.id); if(!v) return; const pend=cuotasPend(v.id), k=S.clientes.find(x=>x.id===v.cliente)||{};
   if(!pend.length){ ui.vAct=null; toast('Ya no le quedan cuotas pendientes'); render(); return; }
   const fs=planFechas(V('fcq','')||pend[0].vence||nextMonthDue(k.dia),pend.length,k.dia); ui.vAct=null; clearForm('fcq');
@@ -2131,8 +2155,8 @@ vHistorial=function(){ const f=ui.histF, chips=['Todo','Ventas','Compras','Gasto
     ${L.length>80?`<p class="note">Mostrando 80 de ${L.length}. Busca para encontrar una en particular.</p>`:''}<p class="note">Toca una venta para ver sus cuotas, editarla o anularla.</p>`; }
   if(f==='Compras'){ const cs=[...S.compras].sort((a,b)=>(b.fecha||'').localeCompare(a.fecha||''));
     return chipHtml+`<div class="list" style="margin-top:12px">${cs.map(c=>{ const bs=S.bottles.filter(b=>b.compra===c.id), names=[...new Set(bs.map(b=>b.name))];
-      return `<button class="rowbtn" data-a="stockSeg" data-seg="pedidos"><div class="main"><div class="t">${esc(provName(c.prov))}</div><div class="s" style="white-space:normal">${fmtDate(c.fecha)} · ${c.estado}${names.length?' · '+esc(names.slice(0,3).join(', '))+(names.length>3?'…':''):''}</div></div><span class="amt">${clp(c.total)}</span></button>`; }).join('')||'<div class="empty">Sin compras anotadas en la app. Las del Excel están en Stock → Perfumes → Vendidos.</div>'}</div>
-    <p class="note">Las compras anotadas desde la app. Para ver o recibir un pedido ve a Stock → Pedidos.</p>`; }
+      return `<button class="rowbtn" data-a="compraSheet" data-id="${c.id}"><div class="main"><div class="t">${esc(provName(c.prov))}</div><div class="s" style="white-space:normal">${fmtDate(c.fecha)} · ${c.estado}${names.length?' · '+esc(names.slice(0,3).join(', '))+(names.length>3?'…':''):''}</div></div><span class="amt">${clp(c.total)}</span></button>`; }).join('')||'<div class="empty">Sin compras anotadas en la app. Las del Excel están en Stock → Perfumes → Vendidos.</div>'}</div>
+    <p class="note">Las compras anotadas desde la app. Toca un pedido para verlo, corregirlo o borrarlo.</p>`; }
   return _vHistorial14().replace(/<div class="chips" style="margin-top:12px">[\s\S]*?<\/div><\/div>/,chipHtml); };
 const _stockSeg14=A.stockSeg; A.stockSeg=d=>{ if(tab!=='stock'){ ui.stockSeg=d.seg; goTo('stock'); return; } return _stockSeg14(d); };
 
@@ -2217,27 +2241,179 @@ function aplicarArregloOps(x){ S.cfg.fixes=S.cfg.fixes||[]; if(S.cfg.fixes.inclu
 
 /* ===== src/18_quitar_pago.js ===== */
 /* ---------- Quitar un pago anotado por error ----------
-   Desde la hoja de la venta: "Quitar un pago". Lista los pagos de esa venta y cada uno se puede borrar;
-   la cuota vuelve a quedar como deuda. Si el pago venía del saldo a favor, ese saldo vuelve al cliente. */
+   Hoja de la venta → "Corregir o deshacer" → "Quitar un pago". Lista los pagos de esa venta; al tocar uno pide
+   confirmar y la cuota vuelve a quedar como deuda. Si el pago venía del saldo a favor, ese saldo vuelve al cliente. */
 function pagosVenta(vid){ const cs=new Map(S.cuotas.filter(c=>c.venta===vid).map(c=>[c.id,c]));
   return S.pagos.filter(p=>cs.has(p.cuota)).map(p=>({p,c:cs.get(p.cuota)})).sort((a,b)=>String(b.p.fecha||'').localeCompare(String(a.p.fecha||''))||b.c.n-a.c.n); }
+const cuotaNom=c=>c.n===0?'Pie':'Cuota '+c.n;
+const pagoDet=(p,c)=>[p.fecha?fmtDate(p.fecha):`sin fecha (la cuota vencía el ${fmtDate(c.vence)})`, p.recibio?'recibió '+esc(p.recibio):'', p.tipo==='favor'?'del saldo a favor':''].filter(Boolean).join(' · ');
 const _vVentaSheetQuitar=vVentaSheet;
 vVentaSheet=function(v){
-  const L=pagosVenta(v.id);
-  if(ui.vAct==='quitarPago'&&L.length){
-    return `<div class="grab"></div><div><h2 style="margin:0">${v.id} · ${esc(cliName(v.cliente))}</h2><p class="note" style="margin-top:4px">Quitar un pago</p></div>
-    <span class="s">Toca el pago que anotaste por error. La cuota vuelve a quedar como deuda.</span>
-    <div class="list">${L.map(({p,c})=>`<div class="row"><div class="main"><div class="t">${c.n===0?'Pie':'Cuota '+c.n} · ${clp(p.monto)}</div><div class="s">${p.fecha?fmtDate(p.fecha):'sin fecha'}${p.recibio?' · recibió '+esc(p.recibio):''}${p.tipo==='favor'?' · del saldo a favor':''}</div></div><button class="btn sm ghost" data-a="quitarPago" data-id="${p.id}">Quitar</button></div>`).join('')}</div>
-    <div class="acts"><button class="btn ghost" data-a="vAct" data-v="">Atrás</button></div>`; }
-  let h=_vVentaSheetQuitar(v);
-  if(!ui.vAct&&L.length&&!v.enPlan){ const btn=`<button class="btn ghost block" data-a="vAct" data-v="quitarPago">Quitar un pago</button>`;
-    h=h.includes('data-a="closeSheet">Cerrar</button>')?h.replace(/<button class="btn ghost block" data-a="closeSheet">Cerrar<\/button>(?![\s\S]*data-a="closeSheet">Cerrar<\/button>)/,btn+'<button class="btn ghost block" data-a="closeSheet">Cerrar</button>'):h+btn; }
-  return h; };
+  const L=pagosVenta(v.id), head=`<div class="grab"></div><div><h2 style="margin:0">${v.id} · ${esc(cliName(v.cliente))}</h2><p class="note" style="margin-top:4px">${v.fecha?fmtDay(v.fecha):'Sin fecha'} · vendió ${esc(v.vendedor)}</p></div>`;
+  if(ui.vAct==='quitarPago'&&L.length){ const sel=ui.qpSel&&L.find(o=>o.p.id===ui.qpSel);
+    if(sel){ const {p,c}=sel, {paid}=idx(), deb=saldoC(c,paid)+p.monto;
+      return `${head}<span class="flab">¿Quitar este pago?</span>
+      <div class="sched"><div class="r"><span>${cuotaNom(c)} · ${clp(p.monto)}</span><b>${pagoDet(p,c)}</b></div></div>
+      <div class="warnbox">${cuotaNom(c)} vuelve a deber ${clp(Math.min(deb,c.monto))}${p.tipo==='favor'?` y ${esc(cliName(v.cliente))} recupera ${clp(p.monto)} de saldo a favor`:''}.</div>
+      <div class="acts"><button class="btn ghost" data-a="qpSel" data-id="">Atrás</button><button class="btn danger solid" data-a="quitarPago" data-id="${p.id}">Sí, quitar pago</button></div>`; }
+    const tot=L.reduce((a,o)=>a+o.p.monto,0);
+    return `${head}<span class="flab">Quitar un pago</span>
+    <span class="s">Toca el pago que anotaste por error. Te vamos a pedir que confirmes.</span>
+    <div class="list">${L.map(({p,c})=>`<button class="rowbtn" data-a="qpSel" data-id="${p.id}"><div class="main"><div class="t">${cuotaNom(c)} · ${clp(p.monto)}</div><div class="s" style="white-space:normal">${pagoDet(p,c)}</div></div><span class="s">Quitar ›</span></button>`).join('')}</div>
+    <span class="s">${L.length} pago${L.length>1?'s':''} · ${clp(tot)} en total</span>
+    <div class="acts"><button class="btn ghost" data-a="vAct" data-v="" style="grid-column:1/-1">Atrás</button></div>`; }
+  return _vVentaSheetQuitar(v); };
+FIX.venta.push({ord:30,label:'Quitar un pago',sub:v=>{ const n=pagosVenta(v.id).length; return `${n} pago${n>1?'s':''} anotado${n>1?'s':''}: la cuota vuelve a quedar como deuda`; },when:v=>!v.enPlan&&pagosVenta(v.id).length>0,attrs:()=>`data-a="vAct" data-v="quitarPago"`});
+A.qpSel=d=>{ ui.qpSel=d.id||null; render(); };
+const _vAct18=A.vAct; A.vAct=function(d,...r){ ui.qpSel=null; return _vAct18.call(this,d,...r); };
 A.quitarPago=d=>{ const p=S.pagos.find(x=>x.id===d.id); if(!p) return; const c=S.cuotas.find(x=>x.id===p.cuota)||{}, v=S.ventas.find(x=>x.id===c.venta)||{};
-  ui.vAct=pagosVenta(v.id).length>1?'quitarPago':null;
-  commit(`Pago de ${clp(p.monto)} quitado (${c.n===0?'pie':'cuota '+c.n} de ${v.id})`, ()=>{ S.pagos=S.pagos.filter(x=>x!==p);
+  ui.qpSel=null; ui.vAct=pagosVenta(v.id).length>1?'quitarPago':null;
+  commit(`Pago de ${clp(p.monto)} quitado: ${c.n===0?'el pie':'la cuota '+c.n} de ${v.id} vuelve a deber`, ()=>{ S.pagos=S.pagos.filter(x=>x!==p);
     if(p.tipo==='favor'){ const k=S.clientes.find(x=>x.id===v.cliente); if(k) k.favor=(k.favor||0)+p.monto; } });
   if(!pagosVenta(v.id).length) ui.vAct=null; };
+
+
+/* ===== src/19_corregir.js ===== */
+/* ---------- Corregir o deshacer (pedidos, botellas, clientes, cierre) ----------
+   Cada cosa que se anota tiene su vuelta atrás en su propia hoja, dentro de "Corregir o deshacer".
+   Lo que borra pide confirmar; lo que solo devuelve un estado se hace directo (y queda "Deshacer" 10 s).
+   Si algo posterior depende de eso (ya se vendió, ya se cerró el mes), la opción no aparece y se explica por qué. */
+
+/* ===== Pedidos (compras al proveedor) ===== */
+const libreB=b=>(b.estado==='Stock'||b.estado==='En camino')&&!b.venta&&!b.porEntregar;
+const pl=(n,s,p)=>`${n} ${n===1?s:p}`;
+function repartoQuitar(c,monto){ let r=monto, pend=0, paid=0;
+  for(const q of S.deudas.filter(q=>q.compra===c.id&&!q.pagado).sort((a,b)=>String(b.vence||'').localeCompare(String(a.vence||'')))){ const m=Math.min(q.monto,r); pend+=m; r-=m; if(!r) break; }
+  if(r) for(const q of S.deudas.filter(q=>q.compra===c.id&&q.pagado).sort((a,b)=>String(b.pagado).localeCompare(String(a.pagado)))){ const m=Math.min(q.monto,r); paid+=m; r-=m; if(!r) break; }
+  return {pend,paid}; }
+function vCompraSheet(s){ const c=S.compras.find(x=>x.id===s.id); if(!c) return '';
+  const bs=S.bottles.filter(b=>b.compra===c.id), ds=S.deudas.filter(q=>q.compra===c.id), fl=S.gastos.filter(g=>g.ref&&g.ref.compra===c.id).reduce((a,g)=>a+g.monto,0);
+  const head=`<div class="grab"></div><div><h2 style="margin:0">${esc(provName(c.prov))} · ${fmtDate(c.fecha)}</h2><p class="note" style="margin-top:4px">Pedido de ${clp(c.total)} · ${pl(bs.length,'perfume','perfumes')}</p></div>`;
+  const a=ui.cAct, back=full=>`<button class="btn ghost" data-a="cAct" data-v="" ${full?'style="grid-column:1/-1"':''}>Atrás</button>`;
+  if(a==='quitar'){ const sel=ui.cSel&&bs.find(b=>b.id===ui.cSel);
+    if(sel&&libreB(sel)){ const r=repartoQuitar(c,sel.cost);
+      return `${head}<span class="flab">¿Quitar ${esc(sel.name)} del pedido?</span>
+      <div class="warnbox">Se borra esta botella (${sel.id}, costo ${clp(sel.cost)}). El pedido baja a ${clp(c.total-sel.cost)}${r.pend?` y lo que le debes al proveedor baja ${clp(r.pend)}`:''}${r.paid?`${r.pend?'; el':' y el'} pago anotado baja ${clp(r.paid)}`:''}.</div>
+      <div class="acts"><button class="btn ghost" data-a="cSel" data-id="">Atrás</button><button class="btn danger solid" data-a="compraQuitar" data-id="${sel.id}">Sí, quitar</button></div>`; }
+    const L=bs.filter(libreB);
+    return `${head}<span class="flab">Quitar un perfume de este pedido</span><span class="s">Para un perfume que anotaste de más o por error. Solo aparecen los que no se han vendido, abierto ni regalado.</span>
+    <div class="list">${L.map(b=>`<button class="rowbtn" data-a="cSel" data-id="${b.id}"><div class="main"><div class="t">${esc(b.name)}</div><div class="s">${b.id} · ${b.estado.toLowerCase()} · costo ${clp(b.cost)}</div></div><span class="s">Quitar ›</span></button>`).join('')}</div>
+    <div class="acts">${back(1)}</div>`; }
+  if(a==='borrar'){ const pag=ds.filter(q=>q.pagado).reduce((x,q)=>x+q.monto,0), pend=ds.filter(q=>!q.pagado).reduce((x,q)=>x+q.monto,0);
+    return `${head}<span class="flab">¿Borrar este pedido?</span>
+    <div class="warnbox" style="display:grid;gap:4px"><span>Se ${bs.length===1?'borra':'borran'} ${pl(bs.length,'perfume','perfumes')} (${clp(c.total)}).</span>${pend?`<span>Ya no le deberías ${clp(pend)} al proveedor.</span>`:''}${pag?`<span>También se borra lo que anotaste como pagado: ${clp(pag)}.</span>`:''}${fl?`<span>Y el flete de ${clp(fl)}.</span>`:''}</div>
+    <span class="s">Úsalo si el pedido se anotó dos veces o nunca existió.</span>
+    <div class="acts">${back()}<button class="btn danger solid" data-a="compraBorrar" data-id="${c.id}">Sí, borrar pedido</button></div>`; }
+  if(a==='despagar'){ const L=ds.filter(q=>q.pagado&&q.pagado>lastCierre());
+    return `${head}<span class="flab">Desmarcar un pago al proveedor</span><span class="s">Si tocaste "Pagué" por error, vuelve a quedar como deuda con su fecha.</span>
+    <div class="list">${L.map(q=>`<div class="row"><div class="main"><div class="t">${clp(q.monto)}</div><div class="s">Pagado el ${fmtDate(q.pagado)}${q.vence?' · vencía el '+fmtDate(q.vence):''}</div></div><button class="btn sm ghost" data-a="despagar" data-id="${q.id}">Desmarcar</button></div>`).join('')||'<div class="empty">No hay pagos para desmarcar.</div>'}</div>
+    <div class="acts">${back(1)}</div>`; }
+  const esperando=bs.some(b=>b.estado==='En camino'||(b.porEntregar&&!b.llego)), pend=ds.filter(q=>!q.pagado);
+  const est=b=>b.porEntregar?(b.llego?'por entregar':'vendido, en camino'):b.estado==='Uso propio'?'te lo quedaste':b.estado.toLowerCase();
+  return `${head}
+  <div class="list">${bs.map(b=>`<button class="rowbtn" data-a="bottle" data-id="${b.id}"><div class="main"><div class="t">${esc(b.name)}</div><div class="s">${b.id} · costo ${clp(b.cost)}</div></div><span class="chip ${b.estado==='Stock'?'ok':b.estado==='En camino'?'n':'d'}">${est(b)}</span></button>`).join('')||`<div class="empty">${esc(c.nota||'Sin detalle de perfumes.')}</div>`}</div>
+  ${ds.length||fl?`<div class="sched">${ds.map(q=>`<div class="r"><span>${q.pagado?'Pagado el '+fmtDate(q.pagado):'Le debes · vence '+fmtDate(q.vence)}</span><b>${q.pagado?'✓ ':''}${clp(q.monto)}</b></div>`).join('')}${fl?`<div class="r"><span>Flete</span><b>${clp(fl)}</b></div>`:''}</div>`:''}
+  ${pend.map(q=>`<button class="btn paid block" data-a="payProv" data-id="${q.id}">Pagué ${clp(q.monto)}</button>`).join('')}
+  ${esperando?`<button class="btn ghost block" data-a="llegada" data-id="${c.id}">¿Qué llegó?</button>`:''}
+  ${fixGroup('compra',c)}
+  <button class="btn ghost block" data-a="closeSheet">Cerrar</button>`; }
+FIX.compra.push(
+  {ord:10,label:'Desmarcar un pago al proveedor',sub:()=>'Si tocaste "Pagué" por error: vuelve a quedar como deuda',
+    when:c=>{ const p=S.deudas.filter(q=>q.compra===c.id&&q.pagado); if(!p.length) return false; return p.some(q=>q.pagado>lastCierre())?true:`los pagos son de antes del cierre del ${fmtDate(lastCierre())}`; },
+    attrs:()=>`data-a="cAct" data-v="despagar"`},
+  {ord:20,label:'Quitar un perfume de este pedido',sub:()=>'Para uno que anotaste de más o por error',
+    when:c=>{ const bs=S.bottles.filter(b=>b.compra===c.id); if(bs.length<2) return false; return bs.some(libreB)?true:'todos ya se vendieron, abrieron o entregaron'; },
+    attrs:()=>`data-a="cAct" data-v="quitar"`},
+  {ord:99,label:'Borrar pedido',danger:true,sub:()=>'Si se anotó dos veces o nunca existió',
+    when:c=>{ const n=S.bottles.filter(b=>b.compra===c.id&&!libreB(b)).length; return n?`${pl(n,'perfume','perfumes')} de este pedido ya ${n===1?'se vendió, abrió o regaló':'se vendieron, abrieron o regalaron'}. Anula esas ventas primero, o quita los otros uno por uno.`:true; },
+    attrs:()=>`data-a="cAct" data-v="borrar"`});
+A.compraSheet=d=>{ ui.sheet={t:'compra',id:d.id}; ui.cAct=null; ui.cSel=null; render(); };
+A.cAct=d=>{ ui.cAct=d.v||null; ui.cSel=null; render(); };
+A.cSel=d=>{ ui.cSel=d.id||null; render(); };
+A.despagar=d=>{ const q=S.deudas.find(x=>x.id===d.id); if(!q) return; ui.cAct=null;
+  commit(`Pago de ${clp(q.monto)} desmarcado: vuelves a deberlo`, ()=>{ q.pagado=null; }); };
+A.compraQuitar=d=>{ const b=S.bottles.find(x=>x.id===d.id), c=b&&S.compras.find(x=>x.id===b.compra); if(!b||!c||!libreB(b)) return; ui.cAct=null; ui.cSel=null;
+  commit(`${b.name} quitado del pedido`, ()=>{ let r=b.cost; c.total=Math.max(0,c.total-b.cost);
+    for(const q of S.deudas.filter(q=>q.compra===c.id&&!q.pagado).sort((x,y)=>String(y.vence||'').localeCompare(String(x.vence||'')))){ const m=Math.min(q.monto,r); q.monto-=m; r-=m; if(!r) break; }
+    if(r) for(const q of S.deudas.filter(q=>q.compra===c.id&&q.pagado).sort((x,y)=>String(y.pagado).localeCompare(String(x.pagado)))){ const m=Math.min(q.monto,r); q.monto-=m; r-=m; if(!r) break; }
+    S.deudas=S.deudas.filter(q=>q.monto>0); S.bottles=S.bottles.filter(x=>x!==b); updCompra(c.id); }); };
+A.compraBorrar=d=>{ const c=S.compras.find(x=>x.id===d.id); if(!c) return; if(S.bottles.some(b=>b.compra===c.id&&!libreB(b))){ toast('Ese pedido ya tiene perfumes vendidos: no se borró'); return; }
+  const n=S.bottles.filter(b=>b.compra===c.id).length; ui.sheet=null; ui.cAct=null;
+  commit(`Pedido de ${provName(c.prov)} borrado (${pl(n,'perfume','perfumes')}, ${clp(c.total)})`, ()=>{ S.bottles=S.bottles.filter(b=>b.compra!==c.id); S.deudas=S.deudas.filter(q=>q.compra!==c.id);
+    S.gastos=S.gastos.filter(g=>!(g.ref&&g.ref.compra===c.id)); S.compras=S.compras.filter(x=>x!==c); }); };
+
+/* ===== Botellas ===== */
+const cierreLock=f=>f&&lastCierre()&&f<=lastCierre()?`ya cerraste el mes después de esto (cierre del ${fmtDate(lastCierre())})`:true;
+function premioDe(b){ return b.estado==='Comisión'&&typeof vendedores==='function'?vendedores().find(v=>v.premio&&b.nota===`Premio de ${v.nombre} por vender todo`):null; }
+FIX.bottle.push(
+  {ord:10,label:'Volver a stock',when:b=>['Regalo','Uso propio','Pérdida'].includes(b.estado)&&!b.noLlego,
+    sub:b=>b.estado==='Uso propio'?`No te lo quedaste: vuelve a Stock y se borra el retiro de ${clp(b.cost)}`:b.estado==='Regalo'?'No lo regalaste: vuelve a Stock':'No se perdió: vuelve a Stock',
+    attrs:b=>`data-a="bVolver" data-id="${b.id}"`},
+  {ord:10,label:'No lo entregué: vuelve a stock',when:b=>!!premioDe(b),sub:b=>`Era el premio de ${esc(premioDe(b).nombre)}`,attrs:b=>`data-a="premioUndo" data-id="${premioDe(b).id}"`},
+  {ord:10,label:'Sí llegó: pasar a stock',when:b=>(b.estado==='Pérdida'||b.estado==='Devuelta')&&b.noLlego?cierreLock(b.fSalida):false,
+    sub:b=>b.estado==='Devuelta'?'Se borra la devolución y vuelves a deberle al proveedor':'Ya no cuenta como pérdida',attrs:b=>`data-a="bLlegoIgual" data-id="${b.id}"`},
+  {ord:10,label:'Cerrar sin usar: volver a stock',when:b=>{ if(b.estado!=='Abierta') return false; const s=decStats(b); return s.u5+s.u10?'ya vendiste decants de esta botella':true; },
+    sub:()=>'Si la abriste por error y no sacaste decants',attrs:()=>`data-a="bAct" data-v="SinUsar"`},
+  {ord:10,label:'Reabrir botella',when:b=>b.estado==='Agotada'&&!!b.dec,sub:()=>'Si todavía le queda perfume para decants',attrs:b=>`data-a="reabrir" data-id="${b.id}"`},
+  {ord:20,label:'Volver a "en camino"',when:b=>b.estado==='Stock'&&!!b.compra&&S.compras.some(c=>c.id===b.compra),sub:()=>'Si marcaste que llegó y todavía no llega',attrs:b=>`data-a="bCamino" data-id="${b.id}"`},
+  {ord:20,label:'No lo entregué todavía',when:b=>b.estado==='Vendido'&&!!b.entregado&&!b.porEntregar,sub:()=>'Vuelve a "por entregar"',attrs:b=>`data-a="desentregar" data-id="${b.id}"`});
+FIX.venta.push({ord:40,label:'No lo entregué todavía',
+  when:v=>{ const b=S.bottles.find(b=>b.venta===v.id&&b.estado==='Vendido'&&b.entregado&&!b.porEntregar); return !!b; },
+  sub:v=>{ const b=S.bottles.find(b=>b.venta===v.id&&b.estado==='Vendido'&&b.entregado&&!b.porEntregar); return `${esc(b.name)} vuelve a "por entregar"`; },
+  attrs:v=>`data-a="desentregar" data-id="${S.bottles.find(b=>b.venta===v.id&&b.estado==='Vendido'&&b.entregado&&!b.porEntregar).id}"`});
+const _vBottleSheet19=vBottleSheet;
+vBottleSheet=function(b){
+  if(ui.bAct==='SinUsar'&&b.estado==='Abierta'){ const g=S.gastos.filter(x=>x.ref&&x.ref.bottle===b.id).reduce((a,x)=>a+x.monto,0);
+    return `<div class="grab"></div><div><h2 style="margin:0">${esc(b.name)}</h2><p class="note" style="margin-top:4px">${b.ml} ml · ${b.tipo}${b.price?' · precio '+clp(b.price):''}</p></div><span class="flab">¿Cerrar sin usar?</span>
+    <span class="s">Vuelve a Stock con su precio de venta, como si nunca la hubieras abierto.</span>
+    ${g?`<label class="radio"><input type="checkbox" data-a="sinUsarG" ${ui.sinUsarG?'checked':''}><span>También borrar el gasto de frascos (${clp(g)})<br><span class="s">Márcalo si no compraste esos frascos.</span></span></label>`:''}
+    <div class="acts"><button class="btn ghost" data-a="bAct" data-v="">Atrás</button><button class="btn" data-a="cerrarSinUsar" data-id="${b.id}">Volver a stock</button></div>`; }
+  return _vBottleSheet19(b); };
+A.sinUsarG=(d,el)=>{ ui.sinUsarG=el.checked; render(); };
+A.cerrarSinUsar=d=>{ const b=S.bottles.find(x=>x.id===d.id); if(!b||b.estado!=='Abierta') return; const s=decStats(b); if(s.u5+s.u10){ toast('Ya vendiste decants de esta botella'); return; }
+  const g=ui.sinUsarG; ui.sinUsarG=false; ui.bAct=null;
+  commit(`${b.name} vuelve a stock sin abrir${g?' (y se borró el gasto de frascos)':''}`, ()=>{ b.estado='Stock'; b.fSalida=null; delete b.dec; if(g) S.gastos=S.gastos.filter(x=>!(x.ref&&x.ref.bottle===b.id)); }); };
+A.bVolver=d=>{ const b=S.bottles.find(x=>x.id===d.id); if(!b) return; const e=b.estado;
+  commit(`${b.name} vuelve a stock`, ()=>{
+    if(e==='Uso propio'){ const ms=S.movs.map((m,i)=>[m,i]).filter(([m])=>m.tipo==='Uso propio'&&m.det===b.name&&m.monto===b.cost), hit=ms.find(([m])=>m.fecha===b.fSalida)||ms[ms.length-1]; if(hit) S.movs.splice(hit[1],1); }
+    b.estado='Stock'; b.fSalida=null; b.nota=''; }); };
+A.bLlegoIgual=d=>{ const b=S.bottles.find(x=>x.id===d.id); if(!b||!b.noLlego) return;
+  commit(`${b.name} sí llegó: ya está en stock`, ()=>{
+    if(b.estado==='Devuelta'){ const i=S.movs.findIndex(m=>m.tipo==='Devolución proveedor'&&m.det===b.name&&m.fecha===b.fSalida), rest=i>=0?S.movs[i].monto:0; if(i>=0) S.movs.splice(i,1);
+      if(b.cost-rest>0) S.deudas.push({id:uid('Q'),compra:b.compra,monto:b.cost-rest,vence:today(),pagado:null}); }
+    b.estado='Stock'; b.fSalida=null; delete b.noLlego; updCompra(b.compra); }); };
+A.reabrir=d=>{ const b=S.bottles.find(x=>x.id===d.id); if(!b||!b.dec) return; commit(`${b.name} abierta otra vez`, ()=>{ b.estado='Abierta'; b.dec.cerrada=null; b.dec.ajuste=0; }); };
+A.bCamino=d=>{ const b=S.bottles.find(x=>x.id===d.id); if(!b) return; commit(`${b.name} vuelve a "en camino"`, ()=>{ b.estado='En camino'; updCompra(b.compra); }); };
+// "Llegó y lo entregué" ahora anota la fecha, para poder deshacerlo después
+A.entregar=d=>{ const b=S.bottles.find(x=>x.id===d.id); ui.sheet=null; commit(`${b.name} entregado`, ()=>{ b.porEntregar=false; b.entregado=today(); }); };
+A.desentregar=d=>{ const b=S.bottles.find(x=>x.id===d.id); if(!b) return; commit(`${b.name}: queda por entregar`, ()=>{ b.porEntregar=true; delete b.entregado; }); };
+// premio de consignación entregado por error
+A.premioUndo=d=>{ const v=vendOf(d.id); if(!v||!v.premio||!v.premio.entregado) return; if(ui.sheet&&ui.sheet.t==='bottle') ui.sheet=null;
+  commit(`Premio de ${v.nombre}: queda sin entregar`, ()=>{ delete v.premio.entregado;
+    const b=S.bottles.find(x=>x.estado==='Comisión'&&x.nota===`Premio de ${v.nombre} por vender todo`);
+    if(b){ b.estado='Stock'; b.fSalida=null; b.nota=''; return; }
+    for(let i=S.gastos.length-1;i>=0;i--) if(S.gastos[i].cat==='Comisión'&&String(S.gastos[i].det).startsWith(`Premio de ${v.nombre}:`)){ S.gastos.splice(i,1); break; } }); };
+
+/* ===== Clientes unidos por error ===== */
+const _vCliente19=vCliente;
+vCliente=function(){ const h=_vCliente19(); const k=S.clientes.find(c=>c.id===ui.cliId); if(!k||!k.unidos||!k.unidos.length) return h;
+  const ask=ui.sepAsk&&ui.sepAsk.k===k.id?ui.sepAsk.i:null;
+  const items=k.unidos.map((u,i)=>{ const n=u.ventas.filter(id=>S.ventas.some(v=>v.id===id&&v.cliente===k.id)).length, fav=Math.min(k.favor||0,u.cli.favor||0);
+    return ask===i?`<div class="warnbox" style="display:grid;gap:8px;margin:6px 0"><span>¿Separar a ${esc(u.cli.nombre)}? Vuelve a ser otro cliente con ${pl(n,'compra','compras')}${fav?` y ${clp(fav)} de saldo a favor`:''}. Las compras nuevas que anotaste después se quedan con ${esc(k.nombre)}.</span><div style="display:flex;gap:8px"><button class="btn sm danger solid" data-a="separar" data-i="${i}">Sí, separar</button><button class="btn sm ghost" data-a="sepAsk" data-i="">Cancelar</button></div></div>`
+      :`<button data-a="sepAsk" data-i="${i}">Separar a ${esc(u.cli.nombre)}<small>Unido el ${fmtDate(u.fecha)} · ${pl(n,'compra vuelve','compras vuelven')} a su nombre</small></button>`; }).join('');
+  return h+`<details class="fix" style="margin-top:18px" ${ask!=null?'open':''}><summary>Corregir o deshacer</summary><div class="fixlist">${items}</div></details>`; };
+SCREENS.cliente=vCliente;
+A.sepAsk=d=>{ ui.sepAsk=d.i===''||d.i==null?null:{k:ui.cliId,i:+d.i}; render(); };
+A.separar=d=>{ const k=S.clientes.find(c=>c.id===ui.cliId), u=k&&k.unidos&&k.unidos[+d.i]; ui.sepAsk=null; if(!u) return;
+  commit(`${u.cli.nombre} separado de ${k.nombre}`, ()=>{ const o=JSON.parse(JSON.stringify(u.cli)); if(S.clientes.some(c=>c.id===o.id)) o.id=uid('K');
+    const fav=Math.min(k.favor||0,o.favor||0); o.favor=fav; k.favor=(k.favor||0)-fav; S.clientes.push(o);
+    S.ventas.forEach(v=>{ if(u.ventas.includes(v.id)&&v.cliente===k.id) v.cliente=o.id; });
+    if(u.tel&&k.tel===u.tel) k.tel=''; if(u.dia&&k.dia===u.dia) k.dia=null;
+    k.unidos.splice(+d.i,1); if(!k.unidos.length) delete k.unidos; }); };
+
+/* ===== Cierre de mes guardado por error ===== */
+A.cierreDelAsk=d=>{ ui.cierreDel=!!d.v; render(); };
+A.cierreDel=()=>{ const K=S.saldos[S.saldos.length-1]; ui.cierreDel=false; if(!K) return; commit(`Cierre del ${fmtDate(K.fecha)} borrado`, ()=>{ S.saldos.pop(); }); };
 
 
 boot();
